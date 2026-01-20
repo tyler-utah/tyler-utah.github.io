@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tyler Sorensen - Microsoft Research</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        
+        <!-- ============================================== -->
+        <!-- HEADER: Photo, Name, Title, Contact, Links    -->
+        <!-- ============================================== -->
+        <header>
+            <div class="profile">
+                <img src="photo.jpg" alt="Tyler Sorensen" class="profile-photo">
+                <div class="profile-info">
+                    <h1>Tyler Sorensen</h1>
+                    <p class="title">Principal Researcher</p>
+                    <p class="affiliation">
+                        <a href="https://www.microsoft.com/en-us/research/group/research-software-engineering-rise/">Microsoft Research (RiSE)</a>
+                    </p>
+                    <p class="affiliation-secondary">
+                        Associate Professor (on leave), <a href="https://www.ucsc.edu/">UC Santa Cruz</a>
+                    </p>
+                    <p class="email">tsorensen [at] microsoft.com</p>
+                    
+                    <!-- Quick Links -->
+                    <div class="quick-links">
+                        <a href="https://github.com/tyler-utah" title="GitHub">GitHub</a>
+                        <a href="https://scholar.google.com/citations?user=Ax7ebzoAAAAJ&hl=en" title="Google Scholar">Scholar</a>
+                        <a href="cv.pdf" title="CV">CV</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ============================================== -->
+        <!-- ABOUT / BIO                                    -->
+        <!-- ============================================== -->
+        <section id="about">
+            <h2>About</h2>
+            <p>
+                I am a Principal Researcher in the <a href="https://www.microsoft.com/en-us/research/group/research-software-engineering-rise/">RiSE group at Microsoft Research</a>, 
+                and an Associate Professor (on leave) at UC Santa Cruz. My research focuses on concurrency: programming, 
+                modeling, testing, and architecture, with the goal of enabling correct and efficient applications on 
+                emerging architectures. I explore these ideas primarily through GPGPU programming.
+            </p>
+            <p>
+                Previously, I was a postdoc at Princeton with <a href="http://www.princeton.edu/~mrm/">Margaret Martonosi</a> 
+                and received my PhD from Imperial College London advised by <a href="http://multicore.doc.ic.ac.uk/">Alastair Donaldson</a>.
+            </p>
+
+            <!-- NEWS: Easy to update - just add/remove list items -->
+            <div class="news-box">
+                <h3>📢 News</h3>
+                <ul>
+                    <li><strong>2026:</strong> Parallel X accepted to SIGCSE 2026!</li>
+                    <li><strong>2025:</strong> BetterTogether wins Best Paper Award at IISWC 2025!</li>
+                    <!-- Add new items here -->
+                </ul>
+            </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- PhD STUDENTS                                  -->
+        <!-- To update: Just edit the lists below          -->
+        <!-- ============================================== -->
+        <section id="students">
+            <h2>PhD Students</h2>
+            <ul>
+                <li><a href="https://reeselevine.github.io/">Reese Levine</a> - Started Fall 2020</li>
+                <li><a href="https://xuyanwen2012.github.io/">Yanwen Xu</a> - Started Spring 2021</li>
+                <li><a href="https://sharmarithik.github.io/rithiksharma/">Rithik Sharma</a> - Started Fall 2022</li>
+                <li><a href="https://www.linkedin.com/in/zheyuan-chen-7b3b78180/">Zheyuan Chen</a> - Started Fall 2024</li>
+            </ul>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- PUBLICATIONS                                   -->
+        <!-- To add a paper: Copy a <div class="pub"> block -->
+        <!-- ============================================== -->
+        <section id="publications">
+            <h2>Publications</h2>
+
+            <h3>Papers</h3>
+
+            <details class="year-section" open>
+                <summary>2026 (2 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Memory DisOrder: Memory Re-orderings as a Timerless Side-channel</span>
+                        <span class="pub-authors">S. Siddens, S. Srivastava, R. Levine, J. Dykstra, T. Sorensen</span>
+                        <span class="pub-venue">ArXiv, 2026</span>
+                        <span class="pub-links">
+                            <a href="files/disorder.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Parallel X: Redesigning of a Parallel Programming Educational Game with Semantic Foundations and Transfer Learning</span>
+                        <span class="pub-authors">D. McKee, Z. Lin, B. Fox, J. Li, J. Zhu, M. Seif El-Nasr, T. Sorensen</span>
+                        <span class="pub-venue">SIGCSE, 2026</span>
+                        <span class="pub-links">
+                            <a href="files/parallelx2025.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section" open>
+                <summary>2025 (4 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">SHADOW: Simultaneous Multi-Threading Architecture with Asymmetric Threads</span>
+                        <span class="pub-authors">I. Chaturvedi, B. R. Godala, T. Sorensen, A. Gangavaram, T. M. Aamodt, D. Flyer, D. I. August</span>
+                        <span class="pub-venue">MICRO, 2025</span>
+                        <span class="pub-links">
+                            <a href="files/shadow.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">PEAK: A Performance Engineering AI-Assistant for GPU Kernels Powered by Natural Language Transformation</span>
+                        <span class="pub-authors">M. U. Tariq, A. Jangda, A. Moreira, M. Musuvathi, T. Sorensen</span>
+                        <span class="pub-venue">ArXiv, 2025</span>
+                        <span class="pub-links">
+                            <a href="files/peak2025.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">BetterTogether: An Interference-Aware Framework for Fine-grained Software Pipelining on Heterogeneous SoCs</span>
+                        <span class="pub-authors">Y. Xu, R. Sharma, Z. Chen, S. Mistry, T. Sorensen</span>
+                        <span class="pub-venue">IISWC, 2025</span>
+                        <span class="pub-award">🏆 Best Paper Award</span>
+                        <span class="pub-links">
+                            <a href="files/bettertogether2025.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">miniGiraffe: A Pangenomic Mapping Proxy App</span>
+                        <span class="pub-authors">J. I. Dagostini, J. B. Manzano, T. Sorensen, S. Beamer</span>
+                        <span class="pub-venue">IISWC, 2025</span>
+                        <span class="pub-links">
+                            <a href="files/miniGiraffe.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2024 (3 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">GhOST: a GPU Out-of-Order Scheduling Technique for Stall Reduction</span>
+                        <span class="pub-authors">I. Chaturvedi, B. R. Godala, Y. Wu, Z. Xu, K. Iliakis, P.-E. Eleftherakis, S. Xydis, D. Soudris, T. Sorensen, S. Campanoni, T. M. Aamodt, D. I. August</span>
+                        <span class="pub-venue">ISCA, 2024</span>
+                        <span class="pub-links">
+                            <a href="files/ghost.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Mix Testing: Specifying and Testing ABI Compatibility of C/C++ Atomics Implementations</span>
+                        <span class="pub-authors">L. Geeson, J. Brotherston, W. Dijkstra, A. F. Donaldson, L. Smith, T. Sorensen, J. Wickerson</span>
+                        <span class="pub-venue">OOPSLA, 2024</span>
+                        <span class="pub-links">
+                            <a href="files/mix_testing.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">LeftoverLocals: Listening to LLM Responses Through Leaked GPU Local Memory</span>
+                        <span class="pub-authors">T. Sorensen, H. Khlaaf</span>
+                        <span class="pub-venue">ArXiv, 2024</span>
+                        <span class="pub-links">
+                            <a href="files/leftoverlocals2024.pdf">[PDF]</a>
+                            <a href="files/leftoverlocals2024_slides.pdf">[Slides]</a>
+                            <a href="https://blog.trailofbits.com/2024/01/16/leftoverlocals-listening-to-llm-responses-through-leaked-gpu-local-memory/">[Blog]</a>
+                            <a href="https://www.wired.com/story/leftoverlocals-gpu-vulnerability-generative-ai/">[Wired Article]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2023 (3 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">GPUHarbor: Testing GPU Memory Consistency at Large (Experience Paper)</span>
+                        <span class="pub-authors">R. Levine, M. Cho, D. McKee, A. Quinn, T. Sorensen</span>
+                        <span class="pub-venue">ISSTA, 2023</span>
+                        <span class="pub-award">🏆 Distinguished Artifact Award</span>
+                        <span class="pub-links">
+                            <a href="files/gpuharbor2023.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">MC Mutants: Evaluating and Improving Testing for Memory Consistency Specifications</span>
+                        <span class="pub-authors">R. Levine, T. Guo, M. Cho, A. Baker, R. Levien, D. Neto, A. Quinn, T. Sorensen</span>
+                        <span class="pub-venue">ASPLOS, 2023</span>
+                        <span class="pub-award">🏆 Distinguished Paper Award, Distinguished Artifact Award</span>
+                        <span class="pub-links">
+                            <a href="files/mcmutants2023.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Redwood: Flexible and Portable Heterogeneous Tree Traversal Workloads</span>
+                        <span class="pub-authors">Y. Xu, A. Li, T. Sorensen</span>
+                        <span class="pub-venue">ISPASS, 2023</span>
+                        <span class="pub-links">
+                            <a href="files/redwood2023.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2021 (3 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Specifying and Testing GPU Workgroup Progress Models</span>
+                        <span class="pub-authors">T. Sorensen, L. F. Salvador, H. Raval, H. Evrard, J. Wickerson, M. Martonosi, A. F. Donaldson</span>
+                        <span class="pub-venue">OOPSLA, 2021</span>
+                        <span class="pub-links">
+                            <a href="files/oopsla2021b.pdf">[PDF]</a>
+                            <a href="https://github.com/tyler-utah/AlloyForwardProgress/tree/master/artifact">[Code]</a>
+                            <a href="https://gpuharbor.ucsc.edu/gpu-forward-progress/testExplorer.html">[Test Explorer]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">The Semantics of Shared Memory in Intel CPU/FPGA Systems</span>
+                        <span class="pub-authors">D. Iorga, A. F. Donaldson, T. Sorensen, J. Wickerson</span>
+                        <span class="pub-venue">OOPSLA, 2021</span>
+                        <span class="pub-links">
+                            <a href="files/oopsla2021a.pdf">[PDF]</a>
+                            <a href="https://github.com/diorga/harpy">[Code]</a>
+                            <a href="https://johnwickerson.wordpress.com/2021/07/03/understanding-the-memory-semantics-of-multi-threaded-cpu-fpga-programs/">[Blog]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">GraphAttack: Optimizing Data Supply for Graph Applications on In-Order Multicore Architectures</span>
+                        <span class="pub-authors">A. Manocha, T. Sorensen, E. Tureci, O. Mathews, J. L. Aragón, M. Martonosi</span>
+                        <span class="pub-venue">TACO, 2021</span>
+                        <span class="pub-links">
+                            <a href="files/taco2021.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2020 (3 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Foundations of Empirical Memory Consistency Testing</span>
+                        <span class="pub-authors">J. Kirkham, T. Sorensen, E. Tureci, M. Martonosi</span>
+                        <span class="pub-venue">OOPSLA, 2020</span>
+                        <span class="pub-links">
+                            <a href="files/oopsla2020.pdf">[PDF]</a>
+                            <a href="https://www.youtube.com/watch?v=-Vxip6eQzgo">[Video]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Slow and Steady: Measuring and Tuning Multicore Interference</span>
+                        <span class="pub-authors">D. Iorga, T. Sorensen, J. Wickerson, A. F. Donaldson</span>
+                        <span class="pub-venue">RTAS, 2020</span>
+                        <span class="pub-links">
+                            <a href="files/rtas2020.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">MosaicSim: A Lightweight, Modular Simulator for Heterogeneous Systems</span>
+                        <span class="pub-authors">O. Matthews, A. Manocha, D. Giri, M. Orenes-Vera, E. Tureci, T. Sorensen, T. Ham, J. L. Aragón, L. Carloni, M. Martonosi</span>
+                        <span class="pub-venue">ISPASS, 2020</span>
+                        <span class="pub-award">🏆 Best Paper Nomination</span>
+                        <span class="pub-links">
+                            <a href="files/ispass2020.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2019 (1 paper)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">One size doesn't fit all: quantifying performance portability of graph applications on GPUs</span>
+                        <span class="pub-authors">T. Sorensen, S. Pai, A. F. Donaldson</span>
+                        <span class="pub-venue">IISWC, 2019</span>
+                        <span class="pub-award">🏆 Best Paper Award</span>
+                        <span class="pub-links">
+                            <a href="files/iiswc2019.pdf">[PDF]</a>
+                            <a href="files/iiswc2019_slides.pdf">[Slides]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2018 (2 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">GPU schedulers: how fair is fair enough?</span>
+                        <span class="pub-authors">T. Sorensen, H. Evrard, A. F. Donaldson</span>
+                        <span class="pub-venue">CONCUR, 2018</span>
+                        <span class="pub-links">
+                            <a href="files/concur2018.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">The semantics of transactions and weak memory in x86, Power, ARM, and C++</span>
+                        <span class="pub-authors">N. Chong, T. Sorensen, J. Wickerson</span>
+                        <span class="pub-venue">PLDI, 2018</span>
+                        <span class="pub-award">🏆 Best Paper Award</span>
+                        <span class="pub-links">
+                            <a href="files/pldi2018.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2017 (2 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Cooperative kernels: GPU multitasking for blocking algorithms</span>
+                        <span class="pub-authors">T. Sorensen, H. Evrard, A. F. Donaldson</span>
+                        <span class="pub-venue">FSE, 2017</span>
+                        <span class="pub-award">🏆 Distinguished Paper Award</span>
+                        <span class="pub-links">
+                            <a href="files/fse2017.pdf">[PDF]</a>
+                            <a href="https://github.com/tyler-utah/GPU_workgroup_managment">[Code]</a>
+                            <a href="files/fse_slides2017.pdf">[Slides]</a>
+                            <a href="files/fse_poster2017.pdf">[Poster]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Automatically comparing memory consistency models</span>
+                        <span class="pub-authors">J. Wickerson, M. Batty, T. Sorensen, G. Constantinides</span>
+                        <span class="pub-venue">POPL, 2017</span>
+                        <span class="pub-links">
+                            <a href="files/popl2017.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2016 (2 papers)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Portable inter-workgroup barrier synchronisation for GPUs</span>
+                        <span class="pub-authors">T. Sorensen, A. F. Donaldson, M. Batty, G. Gopalakrishnan, Z. Rakamaric</span>
+                        <span class="pub-venue">OOPSLA, 2016</span>
+                        <span class="pub-links">
+                            <a href="files/oopsla2016.pdf">[PDF]</a>
+                            <a href="https://github.com/mc-imperial/gpu_discovery_barrier">[Code]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Exposing errors related to weak memory in GPU applications</span>
+                        <span class="pub-authors">T. Sorensen, A. F. Donaldson</span>
+                        <span class="pub-venue">PLDI, 2016</span>
+                        <span class="pub-links">
+                            <a href="files/pldi2016.pdf">[PDF]</a>
+                            <a href="files/pldi_slides2016.pdf">[Slides]</a>
+                            <a href="https://www.youtube.com/watch?v=r_tPWo_xQYg">[Video]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <details class="year-section">
+                <summary>2015 (1 paper)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">GPU concurrency: weak behaviours and programming assumptions</span>
+                        <span class="pub-authors">J. Alglave, M. Batty, A. F. Donaldson, G. Gopalakrishnan, J. Ketema, D. Poetzl, T. Sorensen, J. Wickerson</span>
+                        <span class="pub-venue">ASPLOS, 2015</span>
+                        <span class="pub-links">
+                            <a href="files/asplos2015.pdf">[PDF]</a>
+                            <a href="http://multicore.doc.ic.ac.uk/gpu-litmus/">[Dataset]</a>
+                            <a href="files/asplos_poster2015.pdf">[Poster]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <h3>Workshop Papers</h3>
+
+            <details class="year-section">
+                <summary>Workshop Papers (5)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">A Simulator and Compiler Framework for Agile Hardware-Software Co-design Evaluation and Exploration</span>
+                        <span class="pub-authors">T. Sorensen, A. Manocha, E. Tureci, M. Orenes-Vera, J. L. Aragón, M. Martonosi</span>
+                        <span class="pub-venue">ICCAD, 2020 (Invited)</span>
+                        <span class="pub-links">
+                            <a href="files/iccad2020.pdf">[PDF]</a>
+                            <a href="files/iccad_slides2020.pdf">[Slides]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Performance evaluation of OpenCL standard support (and beyond)</span>
+                        <span class="pub-authors">T. Sorensen, S. Pai, A. F. Donaldson</span>
+                        <span class="pub-venue">IWOCL, 2019</span>
+                        <span class="pub-award">🏆 Best Paper Award</span>
+                        <span class="pub-links">
+                            <a href="files/iwocl2019.pdf">[PDF]</a>
+                            <a href="files/iwocl_slides2019.pdf">[Slides]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">The hitchhiker's guide to cross-platform OpenCL application development</span>
+                        <span class="pub-authors">T. Sorensen, A. F. Donaldson</span>
+                        <span class="pub-venue">IWOCL, 2016</span>
+                        <span class="pub-links">
+                            <a href="files/iwocl2016.pdf">[PDF]</a>
+                            <a href="files/iwocl_slides2016.pdf">[Slides]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">I compute, therefore I am (buggy): methodic doubt meets multiprocessors</span>
+                        <span class="pub-authors">J. Alglave, L. Maranget, D. Poetzl, T. Sorensen</span>
+                        <span class="pub-venue">TinyToCS, 2015</span>
+                        <span class="pub-links">
+                            <a href="files/tinytocs2015.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Towards shared memory consistency models for GPUs</span>
+                        <span class="pub-authors">T. Sorensen, J. Alglave, G. Gopalakrishnan, V. Grover</span>
+                        <span class="pub-venue">ICS, 2013</span>
+                        <span class="pub-award">🏆 1st Place Undergrad SRC</span>
+                        <span class="pub-links">
+                            <a href="files/ics2013.pdf">[PDF]</a>
+                            <a href="files/ics_preprint2013.pdf">[Preprint]</a>
+                            <a href="files/ics_poster2013.pdf">[Poster]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+
+            <h3>Theses</h3>
+
+            <details class="year-section">
+                <summary>Theses (3)</summary>
+                <div class="year-content">
+                    <div class="pub">
+                        <span class="pub-title">Device-wide Barrier Synchronisation on Graphics Processing Units</span>
+                        <span class="pub-authors">T. Sorensen (Adviser: A. F. Donaldson)</span>
+                        <span class="pub-venue">PhD Thesis, Imperial College London, 2018</span>
+                        <span class="pub-links">
+                            <a href="files/phdthesis.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Testing and Exposing Weak GPU Memory Models</span>
+                        <span class="pub-authors">T. Sorensen (Advisers: G. Gopalakrishnan, Z. Rakamaric)</span>
+                        <span class="pub-venue">MS Thesis, University of Utah, 2014</span>
+                        <span class="pub-links">
+                            <a href="files/msthesis.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                    <div class="pub">
+                        <span class="pub-title">Towards Shared Memory Consistency Models for GPUs</span>
+                        <span class="pub-authors">T. Sorensen (Adviser: G. Gopalakrishnan)</span>
+                        <span class="pub-venue">BS Thesis, University of Utah, 2012</span>
+                        <span class="pub-links">
+                            <a href="files/bsthesis.pdf">[PDF]</a>
+                        </span>
+                    </div>
+                </div>
+            </details>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- PROJECTS                                       -->
+        <!-- ============================================== -->
+        <!--
+        <section id="projects">
+            <h2>Projects</h2>
+
+            <div class="project">
+                <h3><a href="https://gpuharbor.ucsc.edu/">GPU Memory Consistency Testing</a></h3>
+                <p>Running small tests on GPUs to understand (and test) memory ordering properties.</p>
+            </div>
+        </section>
+        -->
+
+        <!-- ============================================== -->
+        <!-- TEACHING                                       -->
+        <!-- ============================================== -->
+        <section id="teaching">
+            <h2>Teaching</h2>
+            <p>I have taught classes at UCSC on compilers and parallel programming.</p>
+            
+            <ul>
+                <li><strong>CSE 280O-01:</strong> Language Systems and Data (LSD) Seminar (co-organized with Lindsey Kuper) - 
+                    <a href="https://lsd-ucsc.github.io/lsd-seminar/2023fa/">Fall 2023</a></li>
+                <li><strong>CSE 211:</strong> Graduate Compiler Design - 
+                    <a href="https://sorensenucsc.github.io/CSE211-fa2023/index.html">Fall 2023</a></li>
+                <li><strong>CSE 113:</strong> Concurrent and Parallel Programming - 
+                    <a href="https://sorensenucsc.github.io/CSE113-wi2023/index.html">Winter 2023</a></li>
+                <li><strong>CSE 110A:</strong> Fundamentals of Compiler Design I - 
+                    <a href="https://sorensenucsc.github.io/CSE110A-sp2023/index.html">Spring 2023</a></li>
+            </ul>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- SERVICE                                        -->
+        <!-- ============================================== -->
+        <!--
+        <section id="service">
+            <h2>Service</h2>
+            <p>
+                Over the years I have served on program committees for the following conferences: 
+                ASPLOS (Vice Chair 2024), PLDI (SRC Co-chair 2021–22), MICRO, ISCA, PACT, CF, FORTE, IWOCL, and IA³.
+            </p>
+        </section>
+        -->
+
+        <!-- ============================================== -->
+        <!-- ALUMNI                                         -->
+        <!-- ============================================== -->
+        <section id="alumni">
+            <h2>Alumni</h2>
+            <p>
+                I've had the privilege of working with the following students at UCSC who have gone on to really great things!
+            </p>
+            <ul class="alumni-list">
+                <li>Devon McKee - MS → Samsung</li>
+                <li>Sanya Srivastava - MS → PhD student at Duke</li>
+                <li>Christian Lei - MS → Microsoft</li>
+                <li>Kiefer Selmon - MS → Nvidia</li>
+                <li>Mingun Cho - UG → PhD student at UC Davis</li>
+                <li>Chris Liu - UG → PhD student at UCLA</li>
+                <li>Naomi Rehman - UG → PhD student at UC Santa Barbara</li>
+                <li>Sean Siddens - UG → PhD student at University of Washington</li>
+                <li>Ananthajit Srikanth - UG → PhD student at EPFL</li>
+            </ul>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- ACKNOWLEDGEMENTS / FUNDING                     -->
+        <!-- ============================================== -->
+        <section id="acknowledgements">
+            <h2>Acknowledgements</h2>
+            <p>
+                I would like to thank various organizations for supporting my work, 
+                either through employment, contracting, or research funding: 
+                Microsoft, Trail of Bits, NSF, Google, DARPA, and the Khronos Group.
+            </p>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- FOOTER                                         -->
+        <!-- ============================================== -->
+        <footer>
+            <p>Last updated: December 2025</p>
+        </footer>
+
+    </div>
+</body>
+</html>
