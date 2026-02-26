@@ -5,6 +5,9 @@ on:
   skip-if-match: 'is:pr is:open in:title "daily did-you-know"'
 permissions:
   contents: read
+tools:
+  edit:
+  bash: true
 safe-outputs:
   create-pull-request:
     max: 1

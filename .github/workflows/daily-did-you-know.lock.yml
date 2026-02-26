@@ -23,7 +23,7 @@
 #
 # Daily 'Did You Know?' fact mined from research papers, posted to the website
 #
-# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"2b3a04faa705ea3a6bdbd18b741f0425d2008650a31daf20ec2f229b2c14307e","compiler_version":"v0.50.4"}
+# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"2ebd5f46aeea1ad1988c0f8b545261a537580d8bdfcb98b55d5093f82f3081ce","compiler_version":"v0.50.4"}
 
 name: "Daily Did You Know"
 "on":
