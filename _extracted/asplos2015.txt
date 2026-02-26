@@ -1,0 +1,263 @@
+GPU Concurrency:
+Weak Behaviours and Programming Assumptions
+Jade Alglave1,2
+Mark Batty3
+Alastair F. Donaldson4
+Ganesh Gopalakrishnan5
+Jeroen Ketema4
+Daniel Poetzl6
+Tyler Sorensen1,5
+John Wickerson4
+1 University College London
+2 Microsoft Research
+3 University of Cambridge
+4 Imperial College London
+5 University of Utah
+6 University of Oxford
+Abstract
+Concurrency is pervasive and perplexing, particularly on
+graphics processing units (GPUs). Current speciﬁcations of
+languages and hardware are inconclusive; thus programmers
+often rely on folklore assumptions when writing software.
+To remedy this state of affairs, we conducted a large em-
+pirical study of the concurrent behaviour of deployed GPUs.
+Armed with litmus tests (i.e. short concurrent programs), we
+questioned the assumptions in programming guides and ven-
+dor documentation about the guarantees provided by hard-
+ware. We developed a tool to generate thousands of litmus
+tests and run them under stressful workloads. We observed
+a litany of previously elusive weak behaviours, and exposed
+folklore beliefs about GPU programming—often supported
+by ofﬁcial tutorials—as false.
+As a way forward, we propose a model of Nvidia GPU
+hardware, which correctly models every behaviour wit-
+nessed in our experiments. The model is a variant of SPARC
+Relaxed Memory Order (RMO), structured following the
+GPU concurrency hierarchy.
+Categories and Subject Descriptors
+B.3.0 [Memory struc-
+tures]: General
+Keywords
+memory consistency, GPU, Nvidia PTX, OpenCL,
+litmus testing, test generation, formal model
+1.
+Introduction
+GPUs have cemented their position in computer systems: no
+longer restricted to graphics, they appear in critical applica-
+tions, e.g. [29]. Thus programming them correctly is crucial.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for proﬁt or commercial advantage and that copies bear this notice and the full citation
+on the ﬁrst page. Copyrights for components of this work owned by others than ACM
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+to post on servers or to redistribute to lists, requires prior speciﬁc permission and/or a
+fee. Request permissions from permissions@acm.org.
+ASPLOS ’15,
+March 14–18, 2015, Istanbul, Turkey..
+Copyright c⃝2015 ACM 978-1-4503-2835-7/15/03. . . $15.00.
+http://dx.doi.org/10.1145/2694344.2694391
+Yet GPU concurrency is poorly speciﬁed. The vendors’
+documentation and programming guides suffer from signif-
+icant omissions and ambiguities, which force programmers
+to rely on folklore assumptions when writing software.
+To distinguish assumptions from ground truth, we ques-
+tioned the hardware guarantees and the assumptions made
+in programming guides. Thus we conducted a large empiri-
+cal study of deployed Nvidia and AMD GPUs (see Tab. 1).
+vendor
+architecture
+chip
+short name
+year
+Nvidia
+Tesla
+GTX 280
+GTX 280
+2008
+Fermi
+GTX 540m
+GTX5
+2011
+Tesla C2075
+TesC
+2011
+Kepler
+GTX 660
+GTX6
+2012
+GTX Titan
+Titan
+2013
+Maxwell
+GTX 750
+GTX7
+2014
+AMD
+TeraScale 2
+Radeon HD 6570
+HD6570
+2011
+Graphics Core
+Next (GCN) 1.0
+Radeon HD 7970
+HD7970
+2012
+Table 1: The GPU chips we tested
+Our methodology relies on executing short programs (lit-
+mus tests), probing speciﬁc hardware behaviours [6, 7, 14,
+17]. Central to the success of our method is a test harness: we
+run each test thousands of times under stressful workloads,
+to provoke the behaviour that the test characterises.
+Our litmus tests uncovered weak GPU behaviours, sim-
+ilar to those of CPUs (e.g. IBM Power [6, 7]), which “no
+existing literature has been able to show how to trigger”
+and have been dismissed as “inﬁnitesimally unlikely” to oc-
+cur [19].7 We observed weak behaviours on all the chips
+listed in Tab. 1 except the GTX 280; we henceforth omit this
+particular chip from our results tables. Moreover, our tests
+exposed as false several programming assumptions made
+in academic works [22, 42] and literature endorsed by ven-
+dors [26, 36, 38]. We summarise our ﬁndings in Tab. 2 and
+detail them in Sec. 3; we illustrate two key ﬁndings below.
+7 In fairness to the authors of [19], we were unable to observe weak be-
+haviours using our method on the Nvidia GTX 280 chip they used.
+Weak behaviours
+The litmus test of Fig. 1 (written in
+Nvidia’s low level language PTX) tests for read-read co-
+herence coRR violations. The left thread stores 1 into the
+location x, which is in global memory and initialised to 0,
+and the right thread, which is in the same CTA (see Sec. 2.1),
+loads twice from x. Read-read coherence violations occur for
+executions ending with register r1 holding 1 and register r2
+holding 0. This behaviour seems to spark debate for CPUs:
+it is allowed by SPARC Relaxed Memory Order (RMO) [43,
+Chap. D.4], but is considered a bug on some ARM chips [12].
+Yet on several Nvidia GPUs, we observed coRR violations
+several thousand times; for instance, the results reported at
+the bottom of Fig. 1 show that the GTX 540m exhibited
+coRR violations on 11642 out of 100k runs.
+init:global x=0
+ﬁnal: r1=1 ∧r2=0
+threads: intra-CTA
+0.1
+st.cg [x],1
+1.1
+ld.cg r1,[x]
+1.2
+ld.cg r2,[x]
+obs/100k GTX5 TesC GTX6 Titan GTX7 HD6570 HD7970
+11642 8879
+9599 9787
+0
+0
+0
+Figure 1: PTX test for coherent reads (coRR)
+Programming assumptions
+Fig. 2 shows a spin lock from
+Nvidia’s CUDA by Example [38, App. 1]. We show exper-
+imentally (see Sec. 3.2.2) that without the fences that we
+added (indicated by (+), i.e. lines 3 and 5), a critical section
+protected by the lock can read both stale and future values,
+and that clients using the lock can produce incorrect results.
+1
+__device__ void lock( void ) {
+2
+while( atomicCAS( mutex, 0, 1 ) != 0 );
+3(+)
+__threadfence();}
+4
+__device__ void unlock( void ) {
+5(+)
+__threadfence();
+6
+atomicExch( mutex, 0 );}
+Figure 2: CUDA spin lock of [38, p. 253] with added fences
+After we reported this issue, Nvidia published an erratum
+stating that their code “did not consider [weak behaviours]
+and requires the addition of __threadfence() instructions
+[ ...] to ensure stale values are not read” [33].
+On AMD, an OpenCL analogue of Fig. 2 (see [1]) allows
+stale values to be read on TeraScale 2 and GCN 1.0.
+Hardware vs. language
+We emphasise that this paper fo-
+cuses on hardware behaviours. Our ﬁgures show either PTX
+litmus tests (i.e. Fig. 1, 3,4, 7, 8, 9, 11), or CUDA programs
+(i.e. Fig. 2, 6, 10). For the CUDA programs, we extracted a
+snippet that was susceptible to weak memory behaviours and
+translated it to PTX by using the mapping in Tab. 5. We then
+compiled the PTX litmus test to machine code, and checked
+that the PTX assembler did not reorder or remove memory
+accesses (see Sec. 4.4). Executing the litmus test on a GPU
+thus reveals the hardware behaviour.
+As a way forward, we propose a model of Nvidia GPU
+hardware. Our model is based on SPARC RMO, and is
+stratiﬁed according to the thread hierarchy found on GPUs.
+We validated it against 10930 litmus tests on the Nvidia
+chips of Tab. 1, each executed 100k times, to conﬁrm that
+it accounts for every observed behaviour.
+affected
+litmus tests
+comment
+sec.
+Nvidia
+Fermi/Kepler
+architectures
+coRR
+sparks debate for CPUs
+3.1.1
+Fermi
+architecture
+mp-L1,
+coRR-L2-L1
+fences do not restore
+orderings
+3.1.2
+PTX ISA [36]
+mp-volatile
+volatile documentation
+disagrees with testing
+3.1.2
+GPU
+Computing
+Gems [26]
+dlb-lb,
+dlb-mp
+fenceless deque allows
+items to be skipped
+3.2.1
+CUDA by
+Example [38]
+cas-sl
+fenceless lock allows
+stale values to be read
+3.2.2
+Stuart–Owens
+lock [42]
+exch-sl
+fenceless lock allows
+stale values to be read
+3.2.2
+He–Yu lock [22] sl-future
+lock allows future values
+to be read
+3.2.3
+CUDA 5.5 [32]
+coRR
+compiler reorders volatile
+loads
+4.4
+AMD
+GCN 1.0
+mp
+compiler removes fences
+between loads
+3.1.2
+TeraScale 2
+dlb-lb
+compiler reorders load
+and CAS
+3.2.1
+Table 2: Summary of the issues revealed by our study
+Contributions
+In essence, we present:
+1. a 

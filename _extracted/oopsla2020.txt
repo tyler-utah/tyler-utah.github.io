@@ -1,0 +1,94 @@
+226
+Foundations of Empirical Memory Consistency Testing
+JAKE KIRKHAM, Princeton University, USA
+TYLER SORENSEN, UC Santa Cruz, USA
+ESIN TURECI, Princeton University, USA
+MARGARET MARTONOSI, Princeton University, USA
+Modern memory consistency models are complex, and it is difficult to reason about the relaxed behaviors that
+current systems allow. Programming languages, such as C and OpenCL, offer a memory model interface that
+developers can use to safely write concurrent applications. This abstraction provides functional portability
+across any platform that implements the interface, regardless of differences in the underlying systems. This
+powerful abstraction hinges on the ability of the system to correctly implement the interface. Many techniques
+for memory consistency model validation use empirical testing, which has been effective at uncovering
+undocumented behaviors and even finding bugs in trusted compilation schemes. Memory model testing
+consists of small concurrent unit tests called “litmus tests”. In these tests, certain observations, including
+potential bugs, are exceedingly rare, as they may only be triggered by precise interleaving of system steps
+in a complex processor, which is probabilistic in nature. Thus, each test must be run many times in order to
+provide a high level of confidence in its coverage.
+In this work, we rigorously investigate empirical memory model testing. In particular, we propose method-
+ologies for navigating complex stressing routines and analyzing large numbers of testing observations. Using
+these insights, we can more efficiently tune stressing parameters, which can lead to higher confidence results
+at a faster rate. We emphasize the need for such approaches by performing a meta-study of prior work, which
+reveals results with low reproducibility and inefficient use of testing time.
+Our investigation is presented alongside empirical data. We believe that OpenCL targeting GPUs is a
+pragmatic choice in this domain as there exists a variety of different platforms to test, from large HPC servers
+to power-efficient edge devices. The tests presented in the work span 3 GPUs from 3 different vendors. We
+show that our methodologies are applicable across the GPUs, despite significant variances in the results.
+Concretely, our results show: lossless speedups of more than 5× in tuning using data peeking; a definition of
+portable stressing parameters which loses only 12% efficiency when generalized across our domain; a priority
+order of litmus tests for tuning. We stress test a conformance test suite for the OpenCL 2.0 memory model
+and discover a bug in Intel’s compiler. Our methods are evaluated on the other two GPUs using mutation
+testing. We end with recommendations for official memory model conformance tests.
+CCS Concepts: • Computing methodologies →Graphics processors; • Software and its engineering →
+Software testing and debugging.
+Additional Key Words and Phrases: memory consistency, autotuning, conformance testing, GPUs, OpenCL
+ACM Reference Format:
+Jake Kirkham, Tyler Sorensen, Esin Tureci, and Margaret Martonosi. 2020. Foundations of Empirical Memory
+Consistency Testing. Proc. ACM Program. Lang. 4, OOPSLA, Article 226 (November 2020), 29 pages. https:
+//doi.org/10.1145/3428294
+Authors’ addresses: Jake Kirkham, jak4@alumni.princeton.edu, Princeton University, USA; Tyler Sorensen, tyler.sorensen@
+ucsc.edu, UC Santa Cruz, USA; Esin Tureci, esin.tureci@princeton.edu, Princeton University, USA; Margaret Martonosi,
+mrm@cs.princeton.edu, Princeton University, USA.
+Permission to make digital or hard copies of part or all of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and
+the full citation on the first page. Copyrights for third-party components of this work must be honored. For all other uses,
+contact the owner/author(s).
+© 2020 Copyright held by the owner/author(s).
+2475-1421/2020/11-ART226
+https://doi.org/10.1145/3428294
+Proc. ACM Program. Lang., Vol. 4, No. OOPSLA, Article 226. Publication date: November 2020.
+226:2
+Jake Kirkham, Tyler Sorensen, Esin Tureci, and Margaret Martonosi
+1
+INTRODUCTION
+With the end of Dennard scaling, computational gains are increasingly achieved through parallelism
+and specialization. However, efficient many-core systems remain difficult to design and implement
+correctly. A crucial component of such systems is the memory consistency model, which specifies
+memory-ordering constraints in shared memory concurrent programs. These constraints are
+specified at the programming language and must be honored throughout the various layers of the
+modern system stack. For example, compilers must take the memory model into account when
+performing optimizations, and microarchitectural implementations must ensure certain orderings
+when propagating values through deep and distributed shared memory hierarchies. A bug in any
+one of these complex systems could be critical: e.g. memory propagating out-of-order is akin to a
+race-condition, which have been the cause of power failures [United States Department of Energy
+2004] and medical equipment malfunctions [Leveson and Turner 1993].
+The strongest memory model, i.e. the model that allows the fewest behaviors, is known as se-
+quential consistency [Lamport 1979]. It states that a concurrent program execution must correspond
+to a sequential interleaving of thread instructions. However, most modern systems (languages
+and architectures) have adopted relaxed memory models, in which there are legal program exe-
+cutions that do not correspond to an interleaving. Such behaviors, known as relaxed behaviors,
+are allowed to accommodate various optimizations, from compiler transformations to hardware
+store buffers. Taking into account the nuanced (and sometimes counter-intuitive) nature of relaxed
+models, there are ample opportunities for bugs to be introduced throughout the system stack.
+Indeed, prior work has identified memory-model related errors in applications [Alglave et al. 2015],
+compilers [Manerkar et al. 2016], and hardware implementations [ARM 2011].
+Many modern high-performance programming languages, e.g. C/++ and OpenCL, specify a rela-
+tional relaxed memory model, described using a dynamic, partially ordered happens-before relation
+between annotated memory operations. The key validation task now is providing confidence that
+programming language implementations, i.e. the compiler and resulting machine code execution,
+matches the programming language specification. State-of-the-art techniques in this area typically
+fall into two categories: formal proof and empirical testing.
+Formal Proofs. Ideally, validation of an implementation would be through formal proof, which
+would show that an implementation honors a specification given any legal program. There has
+been much work on performing such proofs for memory consistency models, however, due to the
+complexity of the models and implementations, proofs are largely contained to one layer of the
+system stack and are performed manually, e.g. using interactive theorem provers. For example,
+the C++ programming language has proven compiler mappings to the following ISAs: x86 [Batty
+et al. 2011], PowerPC, and ARM [Batty et al. 2012]. Moving down the system stack, prior work has
+proven hardware implementations, however with manual effort [Choi et al. 2017].
+While these proofs and methodologies are important, they are not always practical (or even
+correct). Compiler proofs must be manually adapted to account for new (or unmodeled) parts
+of the languages (e.g. see [Chong et al. 2018; Flur et al. 2017]) and must be safely incorporated
+into massive compiler code bases. Hardware proofs at this point have only been applied to small
+systems implemented using very specific frameworks. Deployed systems are much larger and
+implementation details are proprietary. In the worst (though rare) cases, bugs ha

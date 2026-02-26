@@ -1,0 +1,146 @@
+One Size Doesn’t Fit All: Quantifying Performance
+Portability of Graph Applications on GPUs
+Tyler Sorensen
+Princeton University, USA
+UC Santa Cruz, USA
+tyler.sorensen@ucsc.edu
+Sreepathi Pai
+University of Rochester, USA
+sree@cs.rochester.edu
+Alastair F. Donaldson
+Imperial College London, UK
+afd@ic.ac.uk
+Abstract—Hand-optimising graph algorithm code for different
+GPUs is particularly labour-intensive and error-prone, involving
+complex and ill-understood interactions between GPU chips,
+applications, and inputs. Although the generation of optimised
+variants has been automated through graph algorithm DSL
+compilers, these do not yet use an optimisation policy. Instead
+they defer to techniques like autotuning, which can produce good
+results, but at the expense of portability.
+In this work, we propose a methodology to automatically
+identify portable optimisation policies that can be tailored (“semi-
+specialised”) as needed over a combination of chips, applications
+and inputs. Using a graph algorithm DSL compiler that targets
+the OpenCL programming model, we demonstrate optimising
+graph algorithms to run in a portable fashion across a wide
+range of GPU devices for the ﬁrst time. We use this compiler
+and its optimisation space as the basis for a large empirical
+study across 17 graph applications, 3 diverse graph inputs
+and 6 GPUs spanning multiple vendors. We show that existing
+automatic approaches for building a portable optimisation policy
+fall short on our dataset, providing trivial or biased results.
+Thus, we present a new statistical analysis which can characterise
+optimisations and quantify performance trade-offs at various
+degrees of specialisation.
+We use this analysis to quantify the performance trade-
+offs as portability is sacriﬁced for specialisation across three
+natural dimensions: chip, application, and input. Compared to
+not optimising programs at all, a fully portable approach provides
+a 1.15× improvement in geometric mean performance, rising to
+1.29× when specialised to application and inputs (but not hard-
+ware). Furthermore, these semi-specialised optimisations provide
+insights into performance-critical features of specialisation. For
+example, optimisations specialised by chip reveal subtle, yet
+performance-critical, characteristics of various GPUs.
+I. INTRODUCTION
+Program transformations, e.g. compiler optimisations, in-
+ﬂuence the runtime performance of programs but are affected
+by the environment in which the program will run, such as
+the architecture, the actual program (application), and input.
+If these aspects are ﬁxed, then the transformations can be
+specialised, usually by autotuning [1]–[7], often resulting in
+signiﬁcant performance improvements.
+Unfortunately, by design, such specialisation does not trans-
+fer to other environments. If the architecture, application, or
+even input change, then the performance impact of trans-
+formations may also change. In some undesirable cases, a
+transformation that caused a speedup for one environment can
+cause slowdowns for another. In our work, for example, a read-
+modify-write aggregation transformation applied to the sg-cmb
+microbenchmark (discussed in Section VIII) shows a speedup
+of more than 22× on an AMD GPU, but yields a slowdown
+(.88×) on an Nvidia GPU.
+Although specialisation is useful, identifying transforma-
+tions that lead to portable performance improvements, i.e.
+those that yield improvements consistently, can deliver im-
+portant insights into similarities (and differences) across envi-
+ronments. Additionally, portable transformations can be more
+widely deployed, reducing the maintenance demanded by
+fragile specialisations. To the best of our knowledge, however,
+there is no systematic and automatic methodology that can
+identify these portable transformations from a larger set of
+compiler transformations. In part, this is not a straightforward
+problem: prior work [8]–[10] has shown that even identifying
+transformations that yield performance improvements in a
+ﬁxed environment can be confounded by chance effects.
+Worse, a quest in search of portable transformations may be
+quixotic – there may be no such set of portable transformations
+due to the diversity of architectures today. In that event,
+then, we would like a rigorous methodology that explicitly
+delimits the environment in which a particular transformation
+is effective. For example, an analysis that can conﬁrm that
+transformation T only yields performance improvements on
+architecture A is still valuable. Knowledge of such semi-
+portable transformations would also immediately enable semi-
+specialisation. Specialisation does not have to be an all or
+nothing strategy. Transformations can be specialised across
+some components of the environment (e.g. the application) if
+they are known at the time of transformation, while remaining
+unspecialised and portable over others.
+What we lack, however, is a methodology to precisely
+quantify the performance trade-off associated with speciali-
+sation vs. portability. For example, writers of domain-speciﬁc
+compilers might wonder whether autotuning (i.e. full special-
+isation) is really worth it for their domain. Could they get
+away with enabling a set of options “semi-specialised” to
+most environments they expect their compilers to generate
+code for? Settling a question like this would require rigorously
+quantifying the performance gap of such semi-specialisation
+over full specialisation.
+In this work, we provide a methodology to resolve these
+questions for the common case of a (usually domain-speciﬁc)
+compiler with a tunable set of transformations, where the
+performance of transformations is affected by applications,
+their inputs and the architectures they run on.
+We subject our methodology to one of the most stringent
+experimental evaluations seen in this space. Our domain-
+speciﬁc compiler is a recent state-of-the-art compiler for graph
+algorithms on GPUs [11]. We use graph algorithms, because
+their performance is heavily inﬂuenced in non-trivial ways
+by their inputs. The same graph application running on a
+road network graph (large diameter, low average degree) and
+a social network graph (small diameter, power-law degree
+distribution) can experience different bottlenecks on the same
+hardware, confounding and throwing off simplistic search
+methods for portable transformations. A compiler framework
+ensures we can have thorough experimental coverage of all
+transformations as compared to evaluations that manually
+optimise [12]. By adapting the compiler to generate OpenCL,
+we are also able to run the graph algorithms on a diverse set of
+GPUs, vastly expanding the discourse over just Nvidia GPUs
+used in prior work.
+Thus, for the ﬁrst time, we quantify the performance porta-
+bility of state-of-the-art graph applications on GPUs. Our work
+uses 17 graph applications (Table VII), using 3 classes of
+inputs (Table VIII), on 6 GPUs which span 4 vendors (Table I).
+These elements are described in more detail in Section VI. The
+transformation space considers 95 optimisation combinations
+involving load balancing, on-chip synchronisation, and read-
+modify-write (RMW) aggregation, discussed in Section V.
+These transformations (and our application set) exercise most
+features of the OpenCL standard, providing ﬁne-grained evi-
+dence for the performance portability (or lack thereof) of this
+widely supported standard.
+a) Contributions: Our contributions are:
+• A large high-quality dataset on the impact of performance
+optimisations on graph algorithms running on a very
+diverse set of GPUs (Section VI). Compared to prior
+work, our study is the ﬁrst to run high-performance graph
+algorithms on many non-Nvidia GPUs.
+• A methodology that identiﬁes portable optimisations from
+this dataset, and also allows us to delineate the scope of
+optimisations across architectures, applications and inputs
+(Section III). Our strategy avoids common pitfalls such as
+identifying trivial or biased optimisations (Section II-C)
+by using 

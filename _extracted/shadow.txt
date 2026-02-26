@@ -1,0 +1,173 @@
+SHADOW: Simultaneous Multi-Threading Architecture with
+Asymmetric Threads
+Ishita Chaturvedi∗
+Princeton University
+Princeton, NJ, USA
+Bhargav Reddy Godala
+Ahead Computing
+Portland, OR, USA
+Abiram Gangavaram
+Princeton University
+Princeton, NJ, USA
+Daniel Flyer
+Princeton University
+Princeton, NJ, USA
+Tyler Sorensen
+University of California,
+Santa Cruz and Microsoft
+Santa Cruz, CA, USA
+Tor M. Aamodt
+University of British
+Columbia
+Vancouver, BC, Canada
+David I. August
+Princeton University
+Princeton, NJ, USA
+Abstract
+Many important applications exhibit shifting demands between
+instruction-level parallelism (ILP) and thread-level parallelism (TLP)
+due to irregular sparsity and unpredictable memory access pat-
+terns. Conventional CPUs optimize for one but fail to balance both,
+leading to underutilized execution resources and performance bot-
+tlenecks. Addressing this challenge requires an architecture that
+can seamlessly adapt to workload variations while maintaining
+efficiency.
+This paper presents SHADOW, the first asymmetric SMT core
+that dynamically balances ILP and TLP by executing out-of-order
+(OoO) and in-order (InO) threads simultaneously on the same core.
+SHADOW maximizes CPU utilization by leveraging deep ILP in the
+OoO thread and high TLP in lightweight InO threads. It is runtime-
+configurable, allowing applications to optimize the mix of OoO and
+InO execution. Evaluated on nine diverse benchmarks, SHADOW
+achieves up to 3.16× speedup and 1.33× average improvement over
+an OoO CPU, with just 1% area and power overhead. By dynami-
+cally adapting to workload characteristics, SHADOW outperforms
+conventional architectures, efficiently accelerating memory-bound
+workloads without compromising compute-bound performance.
+Keywords
+Asymmetric CPU microarchitecture, Simultaneous multithreading
+(SMT), Heterogeneous thread execution, Dynamic ILP-TLP balanc-
+ing, Software work stealing, Sparse workloads, Memory-bound
+workload acceleration, Thread-level parallelism (TLP), Instruction-
+level parallelism (ILP), Sparse matrix multiplication (SpMM), Low-
+overhead microarchitectural design
+1
+Introduction
+Memory-bound applications, such as deep learning workloads [25]
+and high-performance computing kernels [42], often exhibit irregu-
+lar memory access patterns and data sparsity. These characteristics
+cause fluctuations between instruction-level parallelism (ILP) and
+thread-level parallelism (TLP) during execution [33]. Traditional
+CPUs are typically optimized for either ILP or TLP, with out-of-
+order (OoO) cores focusing on ILP and lean in-order (InO) cores on
+∗Also with Cerebras Systems (current address).
+MICRO 2025, October 18–22, 2025, Seoul, Korea
+2025. ACM ISBN 978-X-XXXX-XXXX-X/XX/XX
+https://doi.org/XXXXXXX.XXXXXXX
+70% Sparse
+98% Sparse
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Normalized IPC/
+Work Distribution
+IPC
+Work Distribution
+IPC
+Work Distribution
+OoO:Tid0
+InO:Tid1
+InO:Tid2
+InO:Tid3
+InO:Tid4
+Figure 1: SHADOW dynamically redistributes work as IPC
+changes. High ILP skews execution toward the OoO thread,
+while work distributes equally among threads when the ILP
+is low. SHADOW adapts to the application without software
+intervention.
+TLP. This specialization can lead to underutilization of resources
+and performance inefficiencies when handling applications with
+dynamic parallelism requirements.
+To address CPU inefficiencies, domain-specific accelerators have
+been developed to improve memory-bound performance [20, 46, 47,
+62, 65]. While these accelerators achieve high throughput, they of-
+ten sacrifice programmability, making them unsuitable for general-
+purpose workloads. GPUs provide greater flexibility but struggle
+with irregular memory access patterns, limiting their efficiency
+in sparse workloads [15]. Meanwhile, CPUs remain the most pro-
+grammable option but struggle to adapt dynamically to shifting ILP
+and TLP demands. While OoO CPUs effectively exploit ILP by re-
+ordering instructions, their performance deteriorates in sparse and
+memory-bound workloads, where ILP opportunities diminish. This
+results in inefficiencies when handling high-latency workloads
+such as sparse matrix-vector multiplication (SpMV) in iterative
+solvers [51], graph traversal for social network analysis [37], data-
+base query processing [48], stencil computations in high-performance
+computing [17], and deep learning workloads with large embed-
+dings for recommendation systems [22].
+Evolving Beyond Traditional SMT. Simultaneous multithreading
+(SMT) improves execution unit utilization by allowing multiple
+threads to share resources. However, conventional SMT architec-
+tures trade off between ILP and TLP, either supporting a few OoO
+threads for ILP [39] or many in-order threads for TLP [26]. For
+example, Intel’s SMT designs prioritize ILP by supporting only two
+OoO threads per core. Prior work has explored adaptive SMT ex-
+ecution. MorphCore [56] switches between a 2-thread deep OoO
+1
+MICRO 2025, October 18–22, 2025, Seoul, Korea
+Chaturvedi et al.
+mode and an 8-thread wide in-order mode but lacks simultaneous
+ILP-TLP execution, leading to underutilization when workloads
+do not fit neatly into one mode. FIFO Shelf [53] and FIFOrder [6]
+speculatively routes instructions between OoO and in-order paths,
+but at the cost of increased hardware complexity eg, cross-path
+tracking, speculative wakeup, recovery.
+This paper proposes a fundamentally different approach to bal-
+ancing ILP and TLP: SHADOW executes OoO and InO threads
+concurrently within a single core, dynamically redistributing work
+without speculative instruction steering. Unlike prior approaches
+that switch execution modes, SHADOW enables simultaneous deep
+ILP and wide TLP execution, maximizing resource utilization.
+Figure 1 illustrates how SHADOW dynamically adjusts work
+distribution. At low sparsity, minimal cache misses allow OoO
+threads to achieve high IPC, greedily taking more iterations via
+software-driven work-stealing. As sparsity increases and L1 D-
+cache misses rise, OoO efficiency drops. When memory stalls limit
+OoO throughput, InO threads, free from speculative overhead, con-
+tinue stealing work to sustain execution. This adaptation occurs
+without explicit hardware coordination, threads independently steal
+work as it becomes available, naturally distributing tasks based on
+ILP and TLP demands. While SHADOW, like MorphCore, partitions
+the physical register file among threads, a key distinction is that
+MorphCore operates in either OoO or InO mode at a given time,
+whereas SHADOW enables the simultaneous execution of both (See
+Section 3.3). This co-execution allows SHADOW to dynamically
+balance ILP and TLP within a single core, adapting more effectively
+to workload demands.
+A key advantage of this hybrid approach is its efficiency in terms
+of area and power. Adding additional in-order threads to an ex-
+isting core increases area by only 1%, whereas adding a separate
+core would incur a significant increase in area overhead. Further-
+more, the base core itself is often underutilized, making it more
+cost-effective to fully utilize existing resources before introducing
+additional cores. By enabling in-order and out-of-order execution
+within a single core, SHADOW maximizes utilization while mini-
+mizing power and area costs, offering an efficient, general-purpose
+solution for memory-bound workloads without the complexity of
+speculative instruction steering.
+Contributions of This Work.
+• A comprehensive study of ILP-TLP tradeoffs in modern CPUs,
+demonstrating the inefficiencies of traditional SMT architec-
+tures and highlighting the need for asymmetric multithread-
+ing (Section 2).
+• Through SHADOW, we demonstrate that an asymmetric
+SMT core can efficiently balance ILP and TLP by enabling
+simultaneous execution of in-order and out-of-order threads,
+maximizing performance with minimal area and power over-
+head (Section 3).
+• An extensive evaluation of SHADOW across diverse work-
+loads, spanning compute-bound and memory-intensive ap-
+plications, demons

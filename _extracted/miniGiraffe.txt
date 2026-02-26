@@ -1,0 +1,149 @@
+2025 IEEE International Symposium on Workload Characterization (IISWC)
+miniGiraffe: A Pangenomic Mapping Proxy App
+Jessica I. Dagostini∗, Joseph B. Manzano†, Tyler Sorensen‡∗and Scott Beamer∗
+{jessica.dagostini, tyler.sorensen, sbeamer}@ucsc.edu, joseph.manzano@pnnl.gov
+∗University of California, Santa Cruz, Santa Cruz, CA
+†Pacific Northwest National Laboratory, Richland, Washington
+‡Microsoft Research, Redmond, Washington
+Abstract—Large, real-world scientific applications are often
+complex, making them difficult to analyze, characterize, and
+optimize. Such applications typically involve intricate I/O
+patterns and library dependencies, which can make workflow
+analysis and tuning difficult. Proxy applications offer a prac-
+tical solution by emulating the essential characteristics of the
+original application while significantly reducing complexity.
+In this work, we present miniGiraffe, a proxy application
+for Giraffe, a sophisticated genomics tool that operates over
+a pangenome, a graph-based structure capturing genetic
+variation across a species. We develop miniGiraffe using a
+principled methodology: carefully characterizing Giraffe’s
+behavior and validating that our proxy faithfully reproduces
+its key computational features. miniGiraffe contains only 2%
+of Giraffe’s codebase, while producing identical outputs for
+the most computationally intensive code components and
+closely matches Giraffe’s execution time and scaling behavior
+in these regions. The simplified design of miniGiraffe enabled
+rapid experimentation across multiple architectures, which we
+utilize to perform an autotuning experiment of the mapping
+workflow; we found that specializing parameters to inputs and
+architectures provided a geometric mean speedup of 1.15×
+and up to a 3.32× speedup over the default parameters.
+Index Terms—proxy applications, pangenomes, genomics,
+mapping
+I. Introduction
+Genomics applications are increasingly utilizing large-scale
+compute platforms as data availability and computing power
+is increasing. This is especially true for recent genomics
+innovations, such as the pangenome, which enables the
+simultaneous analysis of multiple genomes. These applications
+are often computationally intensive, I/O-heavy, and built on
+complex software stacks, making them difficult to analyze,
+characterize, and optimize. Proxy applications offer a practical
+way to address this complexity by replicating the core
+behavior of the original application in a more lightweight
+and tractable form.
+As the size and complexity of pangenomes grow, so do
+the computational demands of applications that operate on
+them. This is especially true for the human pangenome,
+which accurately captures critical genetic variations; its first
+draft was only released in 2021 [20]. Mapping against such
+complex reference structures can be extremely resource-
+intensive—depending on the software used, and pangenome
+mapping can take over 40 hours on large compute nodes
+even for relatively small datasets [31]. Given the scientific and
+medical importance of pangenomes, along with the novelty
+of their computational methods, we believe they present an
+TABLE I
+Comparing Giraffe vs. miniGiraffe code
+Giraffe
+miniGiraffe
+∼50k lines of code
+∼1k lines of code
+∼350 source-files
+2 source files
+∼50 library dependencies
+3 library dependencies
+especially compelling opportunity for optimization by the
+computational research community.
+a) The Complexities of Scientific Applications: As is the
+case with many scientific applications, pangenome mapping
+applications are complex, consisting of large code bases
+with many library dependencies. Even profiling the code
+to determine performance-critical regions is difficult, let alone
+developing and evaluating optimizations.
+To manage this complexity, proxy applications (often re-
+ferred to as proxies or miniapps) are commonly employed.
+These are simplified versions of full applications that retain
+key characteristics such as computational kernels, memory
+behavior, or communication patterns; and as such, these
+proxies can be used to understand system behavior and, in
+turn, develop optimization strategies [1]. For example, proxies
+have been used to improve the energy efficiency of large
+physics simulations [34] and to evaluate different program-
+ming models in shock hydrodynamics applications [14].
+While benchmark suites for bioinformatics exist [2], these
+simplified kernels do not capture the complexity of large,
+real-world applications, such as pangenome mapping. As
+such, insights from these benchmarks may not map back
+to the large application. To the best of our knowledge, no
+proxy application for this emerging pangenome computation
+currently exists, which is precisely this work’s contribution.
+b) Shrinking a Giraffe: The complex pangenome mapping
+application we consider is Giraffe [31]. This application
+uses variation graphs [8], a bioinformatics data structure to
+represent linear genome data and their respective variations.
+Giraffe is part of the larger toolkit VG, which contains
+several other applications that utilize variation graphs, and
+its mappings perform many traversals over the graph. These
+tools all have complex inter-dependencies, making focused
+analysis and optimization difficult.
+This work presents miniGiraffe, a proxy application for
+Giraffe. The development of this proxy began with a detailed
+performance analysis of the original application to identify the
+1
+most critical functions, i.e., functions in the mapping procedure
+that take the most amount of time. To do this, we combined
+standard profiling tools with custom instrumentation. We
+identified critical functions that, on average, accounted for
+32% of the total runtime across a diverse set of datasets. Our
+proxy app, miniGiraffe, was built to encapsulate these critical
+functions, with I/O obtained by capturing the I/O to those
+critical functions in Giraffe.
+We validate miniGiraffe both functionally and in terms of
+computational characteristics. Functionally, we demonstrate
+miniGiraffe outputs exactly the same results as Giraffe.
+For computational characteristics, we collect a series of
+performance data, including overall runtime, parallel scaling,
+and hardware performance counters, and show a close
+correspondence to Giraffe. Specifically, we show that the
+execution time of our proxy is within 8.7% of the execution
+time of Giraffe’s critical functions.
+c) Tiny but Mighty: A key component of a proxy is
+its simplicity compared to the original application (Table I).
+miniGiraffe has only 1K lines of code (LoC) across two source
+files compared to the 50K LoC across 350 source files in
+the original application. Furthermore, miniGiraffe uses only
+three external libraries, while the original uses around 50.
+As a result, miniGiraffe is substantially more straightforward
+to compile, requiring a few lines in a Makefile, while the
+original application contains a labyrinth of Makefiles and
+dependencies.
+Utilizing these simplifications, it becomes feasible to explore
+the behavior of the application across different architectures
+and find optimizations. In Section VII, we show the results
+of running miniGiraffe across four different systems and the
+impact their hardware characteristics have on performance.
+Furthermore, we also explored other performance parameters,
+such as parallel scheduling policies, batch size, and software
+caching capacity. miniGiraffe enables exhaustive exploration
+of these parameters, and the results show that specialized
+parameters (i.e., through auto-tuning) is able to achieve up to
+a 3.32× speedup and a geometric mean speedup of 1.15×.
+d) Contributions: In summary, our contributions are:
+• A workload characterization of the Giraffe pangenome
+mapping tool (Section IV).
+• miniGiraffe, a proxy which captures the key computa-
+tional components of Giraffe (Section V).
+• An evaluation of miniGiraffe across different systems
+with different hardware configurations (Section VII).
+• Auto tuning performance parameters a

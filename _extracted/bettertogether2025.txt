@@ -1,0 +1,140 @@
+BetterTogether: An Interference-Aware Framework
+for Fine-grained Software Pipelining on
+Heterogeneous SoCs
+Yanwen Xu1, Rithik Sharma1, Zheyuan Chen1, Shaan Mistry1, Tyler Sorensen2,1
+1University of California, Santa Cruz, Santa Cruz, CA, USA
+2Microsoft Research, Redmond, WA, USA
+{yxu83, riksharm, zchen406, sdmistry, tyler.sorensen}@ucsc.edu
+Abstract—Data processing on the edge offers advantages over
+cloud-based solutions, including reduced latency and lower en-
+ergy consumption. However, to fully utilize edge SoCs, applica-
+tions must be efficiently mapped onto these devices’ constituent
+heterogeneous processing units. This mapping is challenging,
+as modern SoCs incorporate diverse compute units, such as
+big.LITTLE architectures and GPUs with distinct performance
+characteristics. Furthermore, due to edge SoCs’ integration and
+resource constraints, execution on one processing unit can inter-
+fere with the runtime of others, complicating the construction of
+modular and composable performance models.
+To address these challenges, we present BetterTogether, a
+flexible scheduling framework that enables fine-grained software
+pipelining on heterogeneous SoCs. Applications are provided as
+a sequence of stages, each with a CPU and GPU implementation.
+These stages can then be pipelined across the various processing
+units on the SoC. The novel component of BetterTogether is its
+ability to generate accurate and efficient pipeline schedules using
+a profile-guided performance model that captures execution time
+under representative intra-application interference. We demon-
+strate the portability of BetterTogether by evaluating it on three
+SoCs with GPUs from different vendors (NVIDIA, Arm, and
+Qualcomm) and using three computer vision edge workloads with
+different computational characteristics. Our performance model
+yields predictions that correlate strongly with measured results.
+Using these models, we construct efficient pipeline schedules
+specialized to each workload-platform combination, outperform-
+ing homogeneous GPU baselines in nearly all cases, with a
+geomean speedup of 2.14x and a maximum of 7.59x. Finally,
+we present a preliminary exploration with Google’s EdgeTPU,
+highlighting BetterTogether’s extensibility to incorporate an even
+wider variety of processing units into its backend.
+Index
+Terms—edge
+computing,
+heterogeneous
+computing,
+graphics processing units, multiprocessing systems, scheduling
+algorithms, performance modeling
+I. INTRODUCTION
+While large-scale data processing is typically performed
+in the cloud on powerful GPU clusters, modern mobile and
+edge devices are becoming increasingly capable, incorporating
+high-performance SoC processors. Meanwhile, new applica-
+tions and models are being designed for these resource-
+constrained devices, reducing memory and compute demands
+This material is based upon work supported by the National Science Foun-
+dation under Award No. 2239400. Any opinions, findings, and conclusions or
+recommendations expressed in this material are those of the author(s) and do
+not necessarily reflect the views of the funding agencies.
+Fig. 1. The execution time of three pipeline stages on different processing
+units (PUs) on a Google Pixel shows significant variation. E.g., sorting is
+faster on big/medium CPU cores, while building a radix tree is faster on the
+GPU. This heterogeneity highlights the need to map stages to PUs to utilize
+compute resources effectively.
+while maintaining sufficient fidelity. Edge computing offers
+several benefits, including lower latency [18], [30], reduced
+energy consumption [13], and availability even without inter-
+net connectivity. As a result, edge processing is already seeing
+widespread adoption and is expected to grow rapidly in both
+deployment and demand [21].
+Realizing the benefits of edge processing requires overcom-
+ing challenges, particularly in efficiently utilizing the under-
+lying hardware. These devices typically integrate a range of
+Processing Units (PUs), including heterogeneous CPU cores
+(e.g., in big.LITTLE architectures), GPUs, and AI accelerators
+(e.g., TPU). Each PU has different computational characteris-
+tics that impact the efficiency with which it executes different
+tasks. For example, Fig. 1 illustrates the execution time of
+three tasks on four types of PUs within a Google Pixel 7a. This
+device features eight CPU cores across three tiers: 2 Cortex-
+X1 (big), 2 Cortex-A78 (medium), and 4 Cortex-A55 (little),
+along with an Arm Mali-G710 GPU. The evaluated tasks are
+a subset of the stages from a 3D octree construction pipeline
+commonly used in computer vision and robotics (discussed
+in Sec. IV-A) [25]. The results reveal significant performance
+differences: for the sorting task, the GPU performs poorly;
+for building the radix tree, the GPU is fastest; and for
+octree construction, the big and medium CPU cores perform
+comparably to the GPU.
+a) Heterogeneous Parallelism: To efficiently process the
+application stages shown in Fig. 1, one might consider a
+data-parallel approach, assigning different amounts of data to
+each PU based on its relative efficiency [8], [41]. However,
+this strategy remains suboptimal, as it forces PUs to perform
+poorly suited tasks; e.g., the GPU would still handle some
+portion of sorting despite being inefficient. Fortunately, many
+edge applications have two properties that can be exploited for
+efficient execution: (1) they can be decomposed into stages,
+and (2) they process a streaming input, i.e., where small,
+independent inputs, such as frames, arrive continuously over
+time. Given these properties, edge platforms and applications
+are well-suited to pipeline parallelism, where stages can be
+mapped to the PU that provides the most efficient computation,
+e.g., considering Fig. 1, the GPU can build the radix tree
+while the CPU performs sorting. The octree construction stage
+can be assigned to CPU or GPU, providing flexibility in the
+pipeline generation.
+However, a given pipeline schedule (i.e., a mapping from
+stages to PUs) is not portable across devices. The landscape
+of edge hardware is highly diverse; for instance, in contrast to
+the Google Pixel described earlier, the NVIDIA Jetson Nano
+features a larger GPU but lacks heterogeneous CPU cores.
+Because of this, the optimal pipeline schedule for the Nano
+will differ from the optimal schedule for the Pixel. Therefore,
+a pipelining framework must be capable of creating schedules
+for a wide range of devices.
+b) Performance Models: Developing effective pipeline
+schedulers requires accurate performance models for how each
+application stage performs across different PUs. Prior work
+often builds performance models using isolated benchmarks,
+i.e., profiling each PU independently and then composing the
+results to predict system-wide behavior [5], [6]. While this
+modular approach is convenient, it breaks down on edge SoCs,
+where performance on one PU can be affected by activity on
+others [27]. As a result, models built in isolation often fail
+to capture intra-application interference, leading to inaccurate
+performance predictions [22].
+To illustrate these difficulties, we evaluated an edge im-
+age classification task: a pruned (sparsified) version of
+AlexNet [28], [35] where each DNN layer is a pipeline stage.
+Following prior approaches, we build isolated performance
+models for each type of PU (e.g., big, medium, little CPUs,
+and GPU) on the Google Pixel. While the model predicted an
+optimal pipeline with a latency of 4.95 ms, the actual measured
+latency was 7.77 ms, nearly 57% slower than predicted. Our
+observations align with prior work, which has reported dis-
+crepancies of up to 60% between predicted and actual latency
+on Android devices [22]. Extending this analysis across multi-
+ple schedules, we observed low correlation between predicted
+and observed latencies (discussed in Sec. V). These findings
+highlight the challenge of isolated performance models on
+edge devices, where system variability can undermin

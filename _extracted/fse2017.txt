@@ -1,0 +1,153 @@
+Cooperative Kernels: GPU Multitasking for Blocking Algorithms
+Tyler Sorensen
+Imperial College London
+London, UK
+t.sorensen15@imperial.ac.uk
+Hugues Evrard
+Imperial College London
+London, UK
+h.evrard@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London
+London, UK
+alastair.donaldson@imperial.ac.uk
+ABSTRACT
+There is growing interest in accelerating irregular data-parallel
+algorithms on GPUs. These algorithms are typically blocking, so
+they require fair scheduling. But GPU programming models (e.g.
+OpenCL) do not mandate fair scheduling, and GPU schedulers are
+unfair in practice. Current approaches avoid this issue by exploit-
+ing scheduling quirks of today’s GPUs in a manner that does not
+allow the GPU to be shared with other workloads (such as graphics
+rendering tasks). We propose cooperative kernels, an extension to
+the traditional GPU programming model geared towards writing
+blocking algorithms. Workgroups of a cooperative kernel are fairly
+scheduled, and multitasking is supported via a small set of language
+extensions through which the kernel and scheduler cooperate. We
+describe a prototype implementation of a cooperative kernel frame-
+work implemented in OpenCL 2.0 and evaluate our approach by
+porting a set of blocking GPU applications to cooperative kernels
+and examining their performance under multitasking.
+CCS CONCEPTS
+• Software and its engineering →Multiprocessing / multi-
+programming / multitasking; Semantics; • Computing method-
+ologies →Graphics processors;
+KEYWORDS
+GPU, cooperative multitasking, irregular parallelism
+ACM Reference format:
+Tyler Sorensen, Hugues Evrard, and Alastair F. Donaldson. 2017. Coopera-
+tive Kernels: GPU Multitasking for Blocking Algorithms. In Proceedings of
+2017 11th Joint Meeting of the European Software Engineering Conference and
+the ACM SIGSOFT Symposium on the Foundations of Software Engineering,
+Paderborn, Germany, September 4–8, 2017 (ESEC/FSE’17), 11 pages.
+https://doi.org/10.1145/3106237.3106265
+1
+INTRODUCTION
+The Needs of Irregular Data-parallel Algorithms. Many inter-
+esting data-parallel algorithms are irregular: the amount of work to
+be processed is unknown ahead of time and may change dynami-
+cally in a workload-dependent manner. There is growing interest in
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than the
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior specific permission
+and/or a fee. Request permissions from permissions@acm.org.
+ESEC/FSE’17, September 4–8, 2017, Paderborn, Germany
+© 2017 Copyright held by the owner/author(s). Publication rights licensed to Associa-
+tion for Computing Machinery.
+ACM ISBN 978-1-4503-5105-8/17/09...$15.00
+https://doi.org/10.1145/3106237.3106265
+kill
+kill
+fork
+gather time
+time
+execution time
+3
+2
+1
+0
+Graphics request 2CU
+Graphics terminated
+Host CPU
+GPU Compute Units (CU)
+graphics
+graphics
+Figure 1: Cooperative kernels can flexibly resize to let other
+tasks, e.g. graphics, run concurrently
+accelerating such algorithms on GPUs [1–4, 6, 7, 11, 13, 14, 16, 19,
+21, 25, 26, 30, 32]. Irregular algorithms usually require blocking syn-
+chronisation between workgroups, e.g. many graph algorithms use
+a level-by-level strategy, with a global barrier between levels; work
+stealing algorithms require each workgroup to maintain a queue,
+typically mutex-protected, to enable stealing by other workgroups.
+To avoid starvation, a blocking concurrent algorithm requires
+fair scheduling of workgroups. For example, if one workgroup
+holds a mutex, an unfair scheduler may cause another workgroup
+to spin-wait forever for the mutex to be released. Similarly, an
+unfair scheduler can cause a workgroup to spin-wait indefinitely at
+a global barrier so that other workgroups do not reach the barrier.
+A Degree of Fairness: Occupancy-bound Execution. The cur-
+rent GPU programming models—OpenCL [12], CUDA [18] and
+HSA [10], specify almost no guarantees regarding scheduling of
+workgroups, and current GPU schedulers are unfair in practice.
+Roughly speaking, each workgroup executing a GPU kernel is
+mapped to a hardware compute unit.1 The simplest way for a GPU
+driver to handle more workgroups being launched than there are
+compute units is via an occupancy-bound execution model [6, 26]
+where, once a workgroup has commenced execution on a compute
+unit (it has become occupant), the workgroup has exclusive access
+to the compute unit until it finishes execution. Experiments suggest
+that this model is widely employed by today’s GPUs [1, 6, 19, 26].
+The occupancy-bound execution model does not guarantee fair
+scheduling between workgroups: if all compute units are occupied
+then a not-yet-occupant workgroup will not be scheduled until
+some occupant workgroup completes execution. Yet the execution
+model does provide fair scheduling between occupant workgroups,
+which are bound to separate compute units that operate in parallel.
+Current GPU implementations of blocking algorithms assume the
+occupancy-bound execution model, which they exploit by launch-
+ing no more workgroups than there are available compute units [6].
+1In practice, depending on the kernel, multiple workgroups might map to the same
+compute unit; we ignore this in our current discussion.
+431
+ESEC/FSE’17, September 4–8, 2017, Paderborn, Germany
+Tyler Sorensen, Hugues Evrard, and Alastair F. Donaldson
+Resistance to Occupancy-bound Execution. Despite its practi-
+cal prevalence, none of the current GPU programming models
+actually mandate occupancy-bound execution. Further, there are
+reasons why this model is undesirable. First, the execution model
+does not enable multitasking, since a workgroup effectively owns a
+compute unit until the workgroup has completed execution. The
+GPU cannot be used meanwhile for other tasks (e.g. rendering). Sec-
+ond, energy throttling is an important concern for battery-powered
+devices [31]. In the future, it will be desirable for a mobile GPU
+driver to power down some compute units, suspending execution
+of associated occupant workgroups, if the battery level is low.
+Our assessment, informed by discussions with a number of indus-
+trial practitioners who have been involved in the OpenCL and/or
+HSA standardisation efforts (including [9, 22]), is that GPU ven-
+dors (1) will not commit to the occupancy-bound execution model
+they currently implement, for the above reasons, yet (2) will not
+guarantee fair scheduling using preemption. This is due to the high
+runtime cost of preempting workgroups, which requires managing
+thread local state (e.g. registers, program location) for all workgroup
+threads (up to 1024 on Nvidia GPUs), as well as shared memory,
+the workgroup local cache (up to 64 KB on Nvidia GPUs). Vendors
+instead wish to retain the essence of the simple occupancy-bound
+model, supporting preemption only in key special cases.
+For example, preemption is supported by Nvidia’s Pascal archi-
+tecture [17], but on a GTX Titan X (Pascal) we still observe star-
+vation: a global barrier executes successfully with 56 workgroups,
+but deadlocks with 57 workgroups, indicating unfair scheduling.
+Our Proposal: Cooperative Kernels. To summarise: blocking al-
+gorithms demand fair scheduling, but for good reasons GPU ven-
+dors will not commit to the guarantees of the occupancy-bound
+execution model. We propose cooperative kernels, an extension to
+the GPU programming model that aims to resolve this impasse.
+A kernel that requires fair scheduling is identified as cooperative,
+and written using two additional language primitives, offer_kill and
+request_fork, placed by the programmer. Where the cooperative
+kernel could proceed with fewer workgr

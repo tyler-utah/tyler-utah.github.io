@@ -1,0 +1,157 @@
+Parallel X: Redesigning of a Parallel Programming Educational
+Game with Semantic Foundations and Transfer Learning
+Devon McKee
+dlmckee@ucsc.edu
+University of California Santa Cruz
+Santa Cruz, California, USA
+Zhiyu Lin
+zlin34@ucsc.edu
+University of California Santa Cruz
+Santa Cruz, California, USA
+Boyd Fox
+thomas.boyd.fox@gmail.com
+Independent
+Williamsburg, Virginia, USA
+Jiahong Li
+jli906@ucsc.edu
+University of California Santa Cruz
+Santa Cruz, California, USA
+Jichen Zhu
+jicz@itu.dk
+IT University of Copenhagen
+Copenhagen, Denmark
+Magy Seif El-Nasr
+mseifeln@ucsc.edu
+University of California Santa Cruz
+Santa Cruz, California, USA
+Tyler Sorensen
+tsorensen@microsoft.com
+Microsoft Research
+Redmond, Washington, USA
+Abstract
+The vast computational power enabled by parallel programming
+has led to major advances in data science, scientific computing,
+and AI. Yet, teaching parallel programming remains challenging:
+non-deterministic execution introduces an exponential number of
+possible execution paths, where a single flawed path can compro-
+mise an entire program. Games have shown promise in helping
+students grasp complex concepts, but prior game-based approaches
+to teaching parallelism have struggled with two key limitations: a
+lack of strong semantic grounding in concurrency concepts, and
+weak transfer from visual gameplay to real-world coding practices.
+In this paper, we present Parallel X, a redesigned educational
+game that directly addresses these limitations. It (1) incorporates
+classic concurrency theory to support debugging tasks, an increas-
+ingly vital skill as AI-generated code becomes more common and
+error-prone, and (2) introduces transfer learning activities that
+connect in-game states to C++ code, bridging the gap between
+conceptual understanding and implementation. A usability study
+with undergraduate CS majors shows improved usability scores and
+significantly higher ratings for information accessibility compared
+to an earlier version of the game.
+CCS Concepts
+• Applied computing →Computer-assisted instruction.
+Keywords
+Concurrency, Learning transfer, Debugging, Educational tooling
+ACM Reference Format:
+Devon McKee, Zhiyu Lin, Boyd Fox, Jiahong Li, Jichen Zhu, Magy Seif
+El-Nasr, and Tyler Sorensen. 2026. Parallel X: Redesigning of a Parallel
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+SIGCSE TS 2026, St. Louis, MO, USA
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2256-1/2026/02
+https://doi.org/10.1145/3770762.3772657
+Programming Educational Game with Semantic Foundations and Transfer
+Learning. In Proceedings of the 57th ACM Technical Symposium on Computer
+Science Education V.1 (SIGCSE TS 2026), February 18–21, 2026, St. Louis, MO,
+USA. ACM, New York, NY, USA, 7 pages. https://doi.org/10.1145/3770762.
+3772657
+1
+Introduction
+Parallel programming is central to important areas in computer
+science, e.g., data science and machine learning, but it remains no-
+toriously difficult to master. This difficulty arises from rare bugs
+caused by non-deterministic execution. These challenges extend
+to the classroom, where educators have explored innovative ap-
+proaches to make parallelism more accessible. In particular, educa-
+tional games have shown promise in this area.
+For example, Parallel [30] is a game that encodes parallel pro-
+gramming concepts as puzzles and players solve them by avoiding
+potential errors such as data races and deadlocks. Parallel Islands [2]
+is another educational game that consists of classroom activities
+where students act as agents in a concurrent system. BlocklyPar [37]
+is a modified version of Google’s visual programming editor and fo-
+cuses on introducing students to concurrency concepts like parallel
+speedups using block-based programming puzzles.
+Despite innovations in this space, prior educational games for
+parallel programming have had shortcomings that limit their ef-
+fectiveness in college classrooms, where the emphasis is often on
+foundational semantics and practical coding skills rather than broad
+conceptual overviews. In particular, existing tools have two gaps:
+• Semantic grounding: The core semantics of parallel execution
+involve interleaved sequences of atomic actions performed by
+each thread. However, existing games tend to not have a struc-
+tured way to pause and resume execution which obscures this
+critical model and weakens the connection to how real parallel
+programs behave.
+• Transfer learning: While visual metaphors can make games
+engaging, they can diverge from real-world applications. This
+is especially evident in the handling of shared resources, which
+SIGCSE TS 2026, February 18–21, 2026, St. Louis, MO, USA
+Devon McKee et al.
+may appear visually unified but in actual code they are scattered
+and indirect (e.g., distinct pointer variables across functions).
+Parallel X. In this work, we present Parallel X, an educational
+game designed to incorporate foundational parallel programming
+semantics and support explicit transfer learning. Parallel X fea-
+tures a redesigned game engine that addresses the shortcomings
+identified above. Specifically, it introduces two new components:
+• Formal semantic engine (Sec. 3.1): Core game elements, such
+as threads, semaphores, and packages, are formalized in TLA+ [16],
+a well-established specification language based on the interleav-
+ing of atomic actions. The game state can be mapped to a corre-
+sponding TLA+ model, enabling formal validation and reinforc-
+ing the underlying concurrency semantics.
+• Game-to-code visualizations (Sec. 3.3): Beyond formal model-
+ing, the game also generates corresponding C++ code for each
+game state. A dynamic mapping highlights lines of C++ code
+in real time as game threads execute, helping students connect
+in-game actions to actual parallel constructs.
+These new components enable new educational features that sup-
+port a deeper understanding of parallel programming, namely:
+• Explicit debugging (Sec. 3.4): Students can now single-step
+threads, with each step representing a single atomic action, as
+defined by the formal model. This mirrors the behavior of real-
+world debugging tools for parallel programs (e.g., GDB [38]).
+Furthermore, teaching students how to diagnose and debug pro-
+grams (parallel or not) is arguably as important as teaching code
+development itself [41].
+• Interactive tutorials (Sec. 4.2): Earlier work presented con-
+currency errors, e.g., deadlocks and data races, with static ex-
+planations and animations [30]. With the new debugging tools,
+tutorials now ask students to actively reproduce these errors by
+guiding threads into faulty states, closely mimicking how such
+bugs are identified in practice.
+• Learning transfer (Sec. 4.3): With game-to-code visualizations,
+students can see how in-game actions map directly to parallel
+C++ code. As threads execute atomic actions in the game, corre-
+sponding lines of code are highlighted in real time, promoting
+transfer of learning to real-world programming tasks.
+To establish Parallel X’s utility as an effective educational tool, we
+perform a usability study with eight computer science undergradu-
+ate students and a series of heuristic evaluation tests, discussed in
+Sec. 5.
+2
+Related Work
+There is a rich history of educational games for computer science
+education, especially around programming. These games provide
+diverse approaches ranging from block-placement interfaces [32]
+that emulate concrete programming constructs, to puzzle and simu-
+lation games [11, 15] that emphasize task-oriented learning with a
+game-first design. Some programming education games even con-
+tain competition and continuous improvement components [12].
+The integration of games and game mechanics for STEM education
+and learning have demonstrable advantages, including enhanced
+self-confidence in programming abilities [21], increased motivation
+for learning, and a correlation to improved academic outcomes [42].
+As discussed in Sec. 1, several educationa

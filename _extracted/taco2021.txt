@@ -1,0 +1,94 @@
+1
+GraphAttack: Optimizing Data Supply for Graph
+Applications on In-Order Multicore Architectures
+ANINDA MANOCHA, Princeton University, USA
+TYLER SORENSEN, UC Santa Cruz, USA
+ESIN TURECI, Princeton University, USA
+OPEOLUWA MATTHEWS, Princeton University, USA
+JUAN L. ARAGÓN, Universidad de Murcia, Spain
+MARGARET MARTONOSI, Princeton University, USA
+Graph structures are a natural representation of important and pervasive data. While graph applications have
+significant parallelism, their characteristic pointer indirect loads to neighbor data hinder scalability to large
+datasets on multicore systems. A scalable and efficient system must tolerate latency while leveraging data
+parallelism across millions of vertices. Modern Out-of-Order (OoO) cores inherently tolerate a fraction of
+long latencies, but become clogged when running severely memory-bound applications. Combined with large
+power/area footprints, this limits their parallel scaling potential and, consequently, the gains that existing
+software frameworks can achieve. Conversely, accelerator and memory hierarchy designs provide performant
+hardware specializations, but cannot support diverse application demands.
+To address these shortcomings, we present GraphAttack, a hardware-software data supply approach that
+accelerates graph applications on in-order multicore architectures. GraphAttack proposes compiler passes to
+(1) identify idiomatic long-latency loads and (2) slice programs along these loads into data Producer/Consumer
+threads to map onto pairs of parallel cores. Each pair shares a communication queue; the Producer asyn-
+chronously issues long-latency loads, whose results are buffered in the queue and used by the Consumer. This
+scheme drastically increases memory-level parallelism (MLP) to mitigate latency bottlenecks. In equal-area
+comparisons, GraphAttack outperforms OoO cores, do-all parallelism, prefetching, and prior decoupling ap-
+proaches, achieving a 2.87× speedup and 8.61× gain in energy efficiency across a range of graph applications.
+These improvements scale; GraphAttack achieves a 3× speedup over 64 parallel cores. Lastly, it has pragmatic
+design principles; it enhances in-order architectures that are gaining increasing open-source support.
+CCS Concepts: • Computer systems organization →Multicore architectures; Heterogeneous (hybrid)
+systems; Special purpose systems.
+Additional Key Words and Phrases: graph analytics, hardware-software co-design, parallelism
+ACM Reference Format:
+Aninda Manocha, Tyler Sorensen, Esin Tureci, Opeoluwa Matthews, Juan L. Aragón, and Margaret Martonosi.
+2021. GraphAttack: Optimizing Data Supply for Graph Applications on In-Order Multicore Architectures.
+ACM Trans. Arch. Code Optim. 1, 1, Article 1 (January 2021), 25 pages. https://doi.org/10.1145/3469846
+Authors’ addresses: Aninda Manocha, Princeton University, USA, amanocha@princeton.edu; Tyler Sorensen, UC Santa Cruz,
+USA, tyler.sorensen@ucsc.edu; Esin Tureci, Princeton University, USA, esin.tureci@princeton.edu; Opeoluwa Matthews,
+Princeton University, USA, luwa.matthews@gmail.com; Juan L. Aragón, Universidad de Murcia, Spain, jlaragon@um.es;
+Margaret Martonosi, Princeton University, USA, mrm@princeton.edu.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and
+the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored.
+Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires
+prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+© 2021 Association for Computing Machinery.
+XXXX-XXXX/2021/1-ART1 $15.00
+https://doi.org/10.1145/3469846
+ACM Trans. Arch. Code Optim., Vol. 1, No. 1, Article 1. Publication date: January 2021.
+1:2
+A. Manocha et al.
+1
+INTRODUCTION
+Graphs provide a natural abstraction for relational data and as such, they efficiently capture
+key properties of complex and pervasive systems, such as social networks and language models.
+Graph algorithms operate over these structures and have applications in many domains, including
+recommendation systems, information spread modeling, and disease classification [23, 25, 46, 67]. In
+the era of big data, graph applications process datasets that are growing rapidly and the slowdown
+of chip frequency and transistor scaling necessitates innovations that span architecture, compiler,
+and application design to achieve performance gains.
+While significant strides in software/hardware acceleration have been made for other application
+domains in the big data era, e.g. DNNs, graph applications have not experienced similar successes.
+There are three fundamental problems specific to graph applications that have hindered this process.
+(1) Unlike DNNs, graph algorithms do not have repeating blocks of homogeneously parallel, dense
+computations. Instead, both computation and parallelization are highly variable depending on both
+the problem and the input graph structure [51], which is far from ideal for accelerator design [57].
+(2) Any hardware acceleration for graph applications must compete for precious resources, e.g.
+area/energy, in a system design. (3) Graph applications are characterized by irregular memory access
+patterns that pose a data supply challenge. Each vertex computation typically involves several
+pointer indirect accesses and conditional updates to node data. With datasets much larger than
+the last-level cache (LLC), these neighbor accesses often miss in the cache, leading to long-latency
+DRAM accesses that occupy (or stall) system resources. These accesses are difficult to predict
+and have variable dependent computation chains, which confound prefetching, runahead, and
+decoupled architecture designs.
+A performant and scalable solution for graph processing should have: (1) hardware efficiency, i.e.
+high utilization of system resources, and (2) sufficient programmability, i.e. the ability to program
+and execute a variety of algorithm implementations. As a final design philosophy, we believe
+that solutions must also have (3) an accessible architecture implementation that can feasibly be
+integrated into existing open-source hardware design and compiler frameworks. In the golden age
+of computer architecture, it is now more possible than ever to realize hardware-software co-designs,
+even outside of an established chip design company. Existing solutions (both in software and
+hardware) have fallen short of fully meeting these requirements, especially in today’s increasingly
+heterogeneous graph application landscape.
+Existing Software Solutions for Graph Applications. Software frameworks for graph applications
+aim for efficient parallel solutions via shared memory CPUs [52, 66] and GPUs [44, 58]. These
+frameworks largely target the data-parallel loops across vertices (and sometimes edges) and aim
+to parallelize these loops efficiently in a homogeneous (i.e. same program per thread and single
+device) manner, an approach also known as do-all parallelism. They use many threads to perform
+irregular accesses simultaneously, exploiting Memory-Level Parallelism (MLP). Many innovations in
+these frameworks involve load-balancing, efficient data representation, synchronization reduction,
+and dynamic switching between neighbor flow directions (push or pull). While these approaches
+show improvements over baseline implementations, they are limited by underutilized hardware.
+For CPUs, the target cores are typically commercial OoO processors, which are designed with
+latency tolerance mechanisms, e.g. load-store queues (LSQs) and reorder buffers (ROBs). These
+components have high area and energy overheads and yet prior work has shown that without
+additional hardware augmentation, they struggle with graph analytic kernels due to com

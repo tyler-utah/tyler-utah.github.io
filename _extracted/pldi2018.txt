@@ -1,0 +1,193 @@
+The Semantics of Transactions and Weak Memory
+in x86, Power, ARM, and C++
+Nathan Chong
+ARM Ltd., UK
+Tyler Sorensen
+Imperial College London, UK
+John Wickerson
+Imperial College London, UK
+Abstract
+Weak memory models provide a complex, system-centric se-
+mantics for concurrent programs, while transactional mem-
+ory (TM) provides a simpler, programmer-centric semantics.
+Both have been studied in detail, but their combined seman-
+tics is not well understood. This is problematic because such
+widely-used architectures and languages as x86, Power, and
+C++ all support TM, and all have weak memory models.
+Our work aims to clarify the interplay between weak mem-
+ory and TM by extending existing axiomatic weak memory
+models (x86, Power, ARMv8, and C++) with new rules for
+TM. Our formal models are backed by automated tooling that
+enables (1) the synthesis of tests for validating our models
+against existing implementations and (2) the model-checking
+of TM-related transformations, such as lock elision and com-
+piling C++ transactions to hardware. A key finding is that a
+proposed TM extension to ARMv8 currently being consid-
+ered within ARM Research is incompatible with lock elision
+without sacrificing portability or performance.
+CCS Concepts
+• Theory of computation →Parallel
+computing models; Program semantics;
+Keywords
+Shared Memory Concurrency, Weak Memory,
+Transactional Memory, Program Synthesis
+ACM Reference Format:
+Nathan Chong, Tyler Sorensen, and John Wickerson. 2018. The Se-
+mantics of Transactions and Weak Memory in x86, Power, ARM, and
+C++. In Proceedings of 39th ACM SIGPLAN Conference on Program-
+ming Language Design and Implementation (PLDI’18). ACM, New
+York, NY, USA, 18 pages. https://doi.org/10.1145/3192366.3192373
+1
+Introduction
+Transactional memory [28] (TM) is a concurrent program-
+ming abstraction that promises scalable performance with-
+out programmer pain. The programmer gathers instructions
+into transactions, and the system guarantees that each ap-
+pears to be performed entirely and instantaneously, or not
+Permission to make digital or hard copies of part or all of this work for
+personal or classroom use is granted without fee provided that copies are
+not made or distributed for profit or commercial advantage and that copies
+bear this notice and the full citation on the first page. Copyrights for third-
+party components of this work must be honored. For all other uses, contact
+the owner/author(s).
+PLDI’18, June 18–22, 2018, Philadelphia, PA, USA
+© 2018 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-5698-5/18/06.
+https://doi.org/10.1145/3192366.3192373
+at all. To achieve this, a typical TM system tracks each trans-
+action’s memory accesses, and if it detects a conflict (i.e.,
+another thread concurrently accessing the same location, at
+least one access being a write), resolves it by aborting the
+transaction and rolling back its changes.
+1.1
+Motivating Example: Lock Elision in ARMv8
+One important use-case of TM is lock elision [22, 46], in which
+the lock/unlock methods of a mutex are skipped and the
+critical region (CR) is instead executed speculatively inside
+a transaction. If two CRs do not conflict, this method allows
+them to be executed simultaneously, rather than serially. If
+a conflict is detected, the transaction is rolled back and the
+system resorts to acquiring the mutex as usual.
+Lock elision may not apply to all CRs, so an implemen-
+tation must ensure mutual exclusion between transactional
+and non-transactional CRs. This is typically done by starting
+each transactional CR with a read of the lock variable (and
+self-aborting if it is taken) [31, §16.2.1]. If the mutex is sub-
+sequently acquired by a non-transactional CR then the TM
+system will detect a conflict on the lock variable and abort
+the transactional CR.
+Thus, reasoning about lock elision requires a concurrency
+model that accounts for both modes, transactional and non-
+transactional. In particular, systems with memory models
+weaker than sequential consistency (SC) [39] must ensure
+that the non-transactional lock/unlock methods synchronise
+sufficiently with transactions to provide mutual exclusion.
+In their seminal paper introducing lock elision, Rajwar and
+Goodman argued that “correctness is guaranteed without any
+dependence on memory ordering” [46, §9]. In fact, by draw-
+ing on a decade of weak memory formalisations [5, 24, 45]
+and by extending state-of-the-art tools [4, 40, 55], we show
+it is straightforward to contradict this claim automatically.
+Example 1.1 (Lock elision is unsound under ARMv8).
+Consider the program below, in which two threads use
+CRs to update a shared location x.
+Initially: [X0] = x = 0
+lock()
+lock()
+LDR W5,[X0]
+x ←x + 2
+MOV W7,#1
+x ←1
+ADD W5,W5,#2
+STR W7,[X0]
+STR W5,[X0]
+unlock()
+unlock()
+Test: x = 2
+1
+PLDI’18, June 18–22, 2018, Philadelphia, PA, USA
+Nathan Chong, Tyler Sorensen, and John Wickerson
+It must not terminate with x = 2, for this would violate
+mutual exclusion. Now, let us instantiate the lock/unlock
+calls with two possible implementations of those methods.
+Initially: [X0] = x = 0, [X1] = m = 0
+1 Loop:
+atomically
+update m
+from 0
+to 1
+3 TXBEGIN
+begin txn
+LDAXR W2,[X1]
+LDR W6,[X1] load m
+and abort
+if non-
+zero
+CBNZ W2,Loop
+CBZ W6,L1
+4 MOV W3,#1
+TXABORT
+STXR W4,W3,[X1]
+L1:
+CBNZ W4,Loop
+MOV W7,#1
+x ←1
+2 LDR W5,[X0]
+x ←x + 2
+STR W7,[X0]
+5 ADD W5,W5,#2
+TXEND
+end txn
+STR W5,[X0]
+STLR WZR,[X1]
+m ←0
+Test: x = 2
+The left thread executes its CR non-transactionally, using
+the recommended ARMv8 spinlock [7, K9.3], while the
+right thread uses lock elision (with unofficial but represen-
+tative TM instructions). This program can terminate with
+x = 2, thus witnessing the unsoundness of lock elision, as
+follows:
+1 The left thread reads the lock variable m as 0 (free).
+LDAXR indicates an acquire load, which means that
+the read cannot be reordered with any later event in
+program-order.
+2 The left thread reads x as 0. This load can execute specu-
+latively because ARMv8 does not require that the earlier
+store-exclusive (STXR) completes first [45].
+3 The right thread starts a transaction, sees the lock is
+still free, updates x to 1, and commits its transaction.
+4 The left thread updates m to 1 (taken). This is a store-
+exclusive (STXR) [36], so it only succeeds if m has not
+been updated since the last load-exclusive (LDAXR). It
+does succeed, because the right thread only reads m.
+5 Finally, the left thread updates x to 2, andm to 0. STLR is
+a release store, which means that the update tom cannot
+be reordered with any earlier event in program-order.
+The crux of our counterexample is that a (non-transaction-
+al) CR can start executing after the lock has been observed
+to be free, but before it has actually been taken. Importantly,
+this relaxation is safe if all CRs are mutex-protected (i.e.,
+the spinlock in isolation is correct), since every lock acqui-
+sition involves writing to the lock variable and at most one
+store-exclusive can succeed. Rather, the counterexample only
+arises when this relaxation is combined with any reasonable
+TM extension to ARMv8. This includes a proposed extension
+currently being considered within ARM Research.
+Furthermore, there appears to be no easy fix. Re-implemen-
+ting the spinlock by appending a DMB fence to the lock()
+implementation would prevent the problematic reordering,
+but would also inhibit compatibility with code that uses
+the ARM-recommended spinlock, and may decrease perfor-
+mance when lock elision is not in use. Otherwise, if software
+portability is essential, transactional CRs could be made to
+write to the lock variable (rather than just read it), but this
+would induce serialisation, and thus nullify the potential
+speedup from lock elision.
+1.2
+Our Work
+In this paper, we use formalisation to tame the interaction
+between TM and weak memory. Specifically, we propose
+axiomatic models for how transactions behave in x86 [31],
+Power [29], ARMv8 [7], and C++ [34]. As well as the lock
+elision issue already explained, our 

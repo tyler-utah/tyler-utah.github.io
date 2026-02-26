@@ -1,0 +1,214 @@
+Exposing Errors Related to Weak Memory in GPU Applications
+Tyler Sorensen
+Imperial College London, UK
+t.sorensen15@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London, UK
+alastair.donaldson@imperial.ac.uk
+Abstract
+We present the systematic design of a testing environment
+that uses stressing and fuzzing to reveal errors in GPU appli-
+cations that arise due to weak memory effects. We evaluate
+our approach on seven GPUs spanning three Nvidia archi-
+tectures, across ten CUDA applications that use ﬁne-grained
+concurrency. Our results show that applications that rarely or
+never exhibit errors related to weak memory when executed
+natively can readily exhibit these errors when executed in
+our testing environment. Our testing environment also pro-
+vides a means to help identify the root causes of such errors,
+and automatically suggests how to insert fences that harden
+an application against weak memory bugs. To understand
+the cost of GPU fences, we benchmark applications with
+fences provided by the hardening strategy as well as a more
+conservative, sound fencing strategy.
+Categories and Subject Descriptors
+D.1.3 [Programming
+Techniques]: Concurrent Programming; D.2.5 [Software En-
+gineering]: Testing and Debugging
+Keywords
+GPU, CUDA, Nvidia, weak memory, stress test-
+ing, memory fences, synchronisation, concurrency
+1.
+Introduction
+General purpose programming languages for graphics pro-
+cessing units (GPUs), e.g. CUDA [38] and OpenCL [24],
+allow applications from a wide spectrum of domains to take
+advantage of the computational power and energy efﬁciency
+offered by these devices (see [45, pp. 8-10] for an overview).
+GPU applications are prone to concurrency bugs, which
+are notoriously difﬁcult to reproduce and ﬁx due to the sheer
+number of possible instruction interleavings. Worse, GPUs
+have been shown to implement weak memory models, so that
+behaviours beyond those obtained from straightforward inter-
+leavings are possible [8], making GPU application debugging
+even more challenging.
+It has been argued, through hand analysis, that certain
+deployed CUDA applications can exhibit weak memory bugs
+in theory [8], but we are not aware of any existing practical
+method for exposing witnesses to weak memory bugs in
+GPU applications, i.e. demonstrating erroneous outcomes
+from actually running the application on current GPUs. Our
+focus in this work is on investigating (a) whether GPU weak
+memory bugs can be provoked when running real-world
+applications on state-of-the-art hardware, (b) whether such
+bugs can be provoked into occurring frequently (to aid in
+testing and debugging), and (c) the performance cost of
+adding fences to harden GPU applications against such bugs.
+We make three main contributions:
+1. We develop a novel testing environment designed to reveal
+weak memory behaviours in real-world GPU applications.
+This environment uses a sophisticated memory stressing
+strategy, inspired by prior work on GPU litmus testing [8],
+systematically tuned per chip using results from nearly
+half a billion micro-benchmark executions. Applying the
+testing environment requires no prior knowledge of the
+application under test (Sec. 3).
+2. We evaluate our approach on seven GPUs spanning three
+Nvidia architectures, across ten application case-studies,
+showing that we can provoke errors related to weak mem-
+ory and discovering previously unknown weak memory
+issues in two applications (Sec. 4). Our experiments show
+that two straightforward methods for memory stressing
+are not effective at exposing weak memory bugs, while
+in contrast our novel test environment (tuned per chip) is
+often highly effective.
+3. We use our testing environment as a fence placement
+mechanism, to help understand the root causes of weak
+memory bugs, and to harden applications against such
+bugs (Sec. 5); we also benchmark the overhead (in terms
+of runtime and energy) associated with inserting fences to
+harden applications (Sec. 6).
+This is the author’s version of the work. It is posted here for your personal use. Not for
+redistribution. The deﬁnitive version was published in the following publication:
+PLDI’16, June 13–17, 2016, Santa Barbara, CA, USA
+ACM. 978-1-4503-4261-2/16/06...
+http://dx.doi.org/10.1145/2908080.2908114
+100
+Table 1: The seven Nvidia GPUs that we study
+chip
+architecture
+short name
+released
+GTX 980
+Maxwell
+980
+2014
+Quadro K5200
+Kepler
+K5200
+2014
+GTX Titan
+Kepler
+Titan
+2013
+Tesla K20
+Kepler
+K20
+2013
+GTX 770
+Kepler
+770
+2013
+Tesla C2075
+Fermi
+C2075
+2011
+Tesla C2050
+Fermi
+C2050
+2010
+Unlike previous works for checking applications under weak
+memory (see Sec. 7), our technique does not require a formal
+memory model description, and requires no modiﬁcations to
+the compiler or scheduler.
+We begin with a high-level overview of our approach.
+Running example
+We use the CUDA code of Fig. 1, ex-
+tracted from the dot product case study from [45, ch. A1.2]
+which we dub cbe-dot, to illustrate our approach. (Back-
+ground on CUDA is provided in Sec. 2.) The application in-
+corporates a spinlock, and correctness depends on the source
+code ordering between the atomic operations on the lock
+(lines 19, 22) and the memory operations in the critical sec-
+tion (line 15) being preserved. Reordering these operations
+can lead to an incorrect dot product value being computed.
+However, no erroneous behaviour is observed when conduct-
+ing 1000 executions of the application on a Tesla K20 GPU. A
+developer who is not suspicious about weak memory effects
+might conclude that the application is correct.
+Testing environment
+We present in Sec. 3 a testing environ-
+ment for provoking weak behaviours in applications across
+a range of Nvidia GPUs, given in Tab. 1.1 Under our testing
+environment, errors (due to weak memory) appear in 102 out
+of 1000 executions of cbe-dot on the K20.
+The key part of our testing environment is a memory
+stressing strategy that targets a completely disjoint region
+of memory from the application data (called a scratchpad)
+using extra GPU threads disjoint from the threads that execute
+the application (the extra threads are called stressing threads).
+Because the stressing threads and memory are disjoint from
+application threads and data, the set of possible behaviours a
+program can exhibit remains the same.
+Using nearly half a billion micro-benchmark executions,
+the stressing strategy is tuned per GPU to identify where
+to stress within the scratchpad, which instructions to apply
+during stressing, and how many memory locations to stress
+in parallel. Parameters for these values are selected based
+on how many weak behaviours they expose in the micro-
+benchmarks. For example, micro-benchmarking shows that
+for K20 it is effective to apply stress to two memory locations
+in parallel, each aligned at 32-word boundaries.
+1 We restrict to Nvidia GPUs because the majority of available applications
+that exhibit ﬁne-grained concurrency are written using Nvidia’s CUDA.
+1
+__global__
+2
+void dot(int *mutex, float *a, float *b, float *c) {
+3
+int tid = threadIdx.x + blockIdx.x * blockDim.x;
+4
+int cacheIndex = threadIdx.x;
+5
+float temp = 0;
+6
+7
+while (tid < N) {
+8
+temp += a[tid] * b[tid];
+9
+tid += blockDim.x * gridDim.x; }
+10
+11
+// local computation code omitted
+12
+13
+if (cacheIndex == 0) {
+14
+lock(mutex);
+15
+*c += cache[0];
+16
+unlock(mutex); }
+}
+17
+18
+__device__ void lock(int *mutex) {
+19
+while (atomicCAS(mutex, 0, 1) != 0 ); }
+20
+21
+__device__ void unlock(int *mutex) {
+22
+atomicExch(mutex, 0); }
+Figure 1: CUDA code for the cbe-dot application
+Weak behaviours in applications
+We evaluate our testing
+environment on ten GPU application case-studies that im-
+plement ﬁne-grained concurrency idioms, e.g. mutexes and
+concurrent data-structures (Sec. 4). On each of the seven
+GPUs of Tab. 1, we executed each application repeatedly for
+one hour under our testing environment. For comparison, we
+also tested the applications under two more straightforward
+stressing environments that are not tuned per chip.
+Our results show that our

@@ -1,0 +1,95 @@
+120
+The Semantics of Shared Memory in Intel CPU/FPGA
+Systems
+DAN IORGA, Imperial College London, UK
+ALASTAIR F. DONALDSON, Imperial College London, UK
+TYLER SORENSEN, University of California, Santa Cruz, USA
+JOHN WICKERSON, Imperial College London, UK
+Heterogeneous CPU/FPGA devices, in which a CPU and an FPGA can execute together while sharing memory,
+are becoming popular in several computing sectors. In this paper, we study the shared-memory semantics
+of these devices, with a view to providing a firm foundation for reasoning about the programs that run on
+them. Our focus is on Intel platforms that combine an Intel FPGA with a multicore Xeon CPU. We describe the
+weak-memory behaviours that are allowed (and observable) on these devices when CPU threads and an FPGA
+thread access common memory locations in a fine-grained manner through multiple channels. Some of these
+behaviours are familiar from well-studied CPU and GPU concurrency; others are weaker still. We encode
+these behaviours in two formal memory models: one operational, one axiomatic. We develop executable
+implementations of both models, using the CBMC bounded model-checking tool for our operational model
+and the Alloy modelling language for our axiomatic model. Using these, we cross-check our models against
+each other via a translator that converts Alloy-generated executions into queries for the CBMC model. We
+also validate our models against actual hardware by translating 583 Alloy-generated executions into litmus
+tests that we run on CPU/FPGA devices; when doing this, we avoid the prohibitive cost of synthesising a
+hardware design per litmus test by creating our own ‘litmus-test processor’ in hardware. We expect that our
+models will be useful for low-level programmers, compiler writers, and designers of analysis tools. Indeed, as a
+demonstration of the utility of our work, we use our operational model to reason about a producer/consumer
+buffer implemented across the CPU and the FPGA. When the buffer uses insufficient synchronisation – a
+situation that our model is able to detect – we observe that its performance improves at the cost of occasional
+data corruption.
+CCS Concepts: • Theory of computation →Operational semantics; Axiomatic semantics; • Computer
+systems organization →Heterogeneous (hybrid) systems.
+Additional Key Words and Phrases: CPU/FPGA, Core Cache Interface (CCI-P), memory model
+ACM Reference Format:
+Dan Iorga, Alastair F. Donaldson, Tyler Sorensen, and John Wickerson. 2021. The Semantics of Shared Memory
+in Intel CPU/FPGA Systems. Proc. ACM Program. Lang. 5, OOPSLA, Article 120 (October 2021), 28 pages.
+https://doi.org/10.1145/3485497
+Authors’ addresses: Dan Iorga, Department of Computing, Imperial College London, London, SW7 2AZ, UK, d.iorga17@
+imperial.ac.uk; Alastair F. Donaldson, Department of Computing, Imperial College London, London, SW7 2AZ, UK, alastair.
+donaldson@imperial.ac.uk; Tyler Sorensen, Department of Computer Science and Engineering, University of California,
+Santa Cruz, USA, tyler.sorensen@ucsc.edu; John Wickerson, Department of Electrical and Electronic Engineering, Imperial
+College London, London, SW7 2AZ, UK, j.wickerson@imperial.ac.uk.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the
+full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored.
+Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires
+prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+© 2021 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+2475-1421/2021/10-ART120
+https://doi.org/10.1145/3485497
+Proc. ACM Program. Lang., Vol. 5, No. OOPSLA, Article 120. Publication date: October 2021.
+120:2
+Iorga et al.
+1
+INTRODUCTION
+The end of Dennard scaling in the early 2000s led to CPU designers resorting to duplicating
+processor cores to make computational gains, exploiting additional transistors that became available
+year on year thanks to Moore’s law [Rupp 2015]. Now, with the future of Moore’s law looking
+uncertain [Hennessy and Patterson 2019], this homogeneous approach to parallelism is under threat.
+System designers and application developers must look to heterogeneous systems, comprising
+multiple architecturally distinct computational units, for performance and energy efficiency.
+A recent trend in heterogeneous systems is to combine a homogeneous multicore CPU with a
+field-programmable gate array (FPGA). These combined CPU/FPGA systems are of special interest
+because the FPGA component can be configured to represent one or more processing elements
+customised for a particular computationally-intensive sub-task (avoiding the cost of manufacturing
+an application-specific integrated circuit), while the overall application can be written to run on
+the general-purpose CPU. This combination of CPU and FPGA devices has provided significant
+performance gains in several domains, including video processing [Abeydeera et al. 2016], neural
+networks [Guo et al. 2018], and image filtering [Dobai and Sekanina 2013].
+Until recently, data movement in CPU/FPGA systems has been coarse-grained: large amounts of
+data are transferred back and forth between the memory spaces of the FPGA and CPU via special
+memcpy-like API calls. However, recent devices – including Intel’s Xeon+FPGA system [Intel 2019;
+Oliver et al. 2011], the IBM CAPI [Stuecheli et al. 2015] and the Xilinx Alveo [Xilinx 2018] – offer a
+fine-grained shared-memory interface between the CPU and FPGA. This enables synchronisation
+idioms where data is exchanged in arbitrary (potentially small) amounts, such as work stealing,
+which has been shown to enable significant speedups in difficult-to-accelerate applications [e.g.,
+Farooqui et al. 2016; Ramanathan et al. 2016; Tzeng et al. 2010].
+Combined CPU/FPGA systems with fine-grained shared memory have the potential to accelerate
+irregular applications in an energy-efficient manner, but present significant programmability
+challenges. They inherit the well-known challenges associated with concurrent programming on
+homogeneous shared-memory systems, and present new challenges due to complex interactions
+between heterogeneous processing elements that each have distinct memory semantics. Fine-
+grained CPU/FPGA systems are new, and applications that exploit them are only just emerging, so
+we see this as an opportune time to examine their semantics rigorously and lay solid foundations
+for compiler writers and low-level application developers.
+Modelling memory in CPU/FPGA systems. Our contribution is a detailed formal case study of
+the memory semantics of Intel’s latest CPU/FPGA systems. These combine a multicore Xeon
+CPU with an Intel FPGA, and allow them to share main memory through Intel’s Core Cache
+Interface (CCI-P) [Intel 2019]. We refer to this class of systems as X+F (Xeon+FPGA) throughout.1
+To gain an understanding of the variety of complex behaviours that the system can exhibit, we
+have studied the available X+F documentation in detail and empirically investigated the memory
+semantics of a real system that integrates a Broadwell Xeon CPU with an Arria 10 FPGA.
+Based on our investigations, we present a formal semantics for the X+F memory system in
+two forms: an operational semantics that describes the X+F memory system using an abstract
+machine, and an axiomatic semantics that declaratively characterises the executions permitted
+by the memory system independently of any specific implementation. We have mechanised the
+operational semantics in C, in a form suitable for analysis with the CBMC model checker [Clarke
+et al. 2004]. This allows an engineer to explore the possible behaviours of a given memory model
+litmus te

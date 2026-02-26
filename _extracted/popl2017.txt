@@ -1,0 +1,239 @@
+C
+o
+n
+s
+i
+s
+t
+e
+n
+t
+*
+C
+o
+m
+p
+l
+e
+t
+e
+*
+W
+e
+l
+l
+D
+o
+c
+u
+m
+e
+n
+t
+e
+d
+*
+E
+a
+s
+y
+t
+o
+R
+e
+u
+s
+e
+*
+*
+E
+v
+a
+l
+u
+a
+t
+e
+d
+*
+P
+O
+P
+L
+*
+A
+r
+t
+i
+f
+a
+c
+t
+*
+A
+E
+C
+Automatically Comparing Memory Consistency Models
+John Wickerson
+Imperial College London, UK
+j.wickerson@imperial.ac.uk
+Mark Batty
+University of Kent, UK
+m.j.batty@kent.ac.uk
+Tyler Sorensen
+Imperial College London, UK
+t.sorensen15@imperial.ac.uk
+George A. Constantinides
+Imperial College London, UK
+g.constantinides@imperial.ac.uk
+Abstract
+A memory consistency model (MCM) is the part of a programming
+language or computer architecture speciﬁcation that deﬁnes which
+values can legally be read from shared memory locations. Because
+MCMs take into account various optimisations employed by archi-
+tectures and compilers, they are often complex and counterintu-
+itive, which makes them challenging to design and to understand.
+We identify four tasks involved in designing and understanding
+MCMs: generating conformance tests, distinguishing two MCMs,
+checking compiler optimisations, and checking compiler map-
+pings. We show that all four tasks are instances of a general
+constraint-satisfaction problem to which the solution is either a pro-
+gram or a pair of programs. Although this problem is intractable for
+automatic solvers when phrased over programs directly, we show
+how to solve analogous constraints over program executions, and
+then construct programs that satisfy the original constraints.
+Our technique, which is implemented in the Alloy modelling
+framework, is illustrated on several software- and architecture-level
+MCMs, both axiomatically and operationally deﬁned. We automat-
+ically recreate several known results, often in a simpler form, in-
+cluding: distinctions between variants of the C11 MCM; a fail-
+ure of the ‘SC-DRF guarantee’ in an early C11 draft; that x86 is
+‘multi-copy atomic’ and Power is not; bugs in common C11 com-
+piler optimisations; and bugs in a compiler mapping from OpenCL
+to AMD-style GPUs. We also use our technique to develop and
+validate a new MCM for NVIDIA GPUs that supports a natural
+mapping from OpenCL.
+Categories and Subject Descriptors
+C.1.4 [Processor Archi-
+tectures]: Parallel processors; D.3.4 [Programming Languages]:
+Compilers; F.3.2 [Logics and Meanings of Programs]: Semantics
+of Programming Languages
+Keywords
+C/C++, constraint solving, graphics processor (GPU),
+model checking, OpenCL, program synthesis, shared memory con-
+currency, weak memory models
+[Copyright notice will appear here once ’preprint’ option is removed.]
+1.
+Introduction
+In the speciﬁcation of a concurrent programming language or a par-
+allel architecture, the memory consistency model (MCM) deﬁnes
+which values can legally be read from shared memory locations [4].
+MCMs have to be general enough to enable portability, but speciﬁc
+enough to enable efﬁcient implementations. They must also admit
+optimisations employed by architectures (such as store buffering
+and instruction reordering [30]) and by compilers (such as com-
+mon subexpression elimination and constant propagation [7]). This
+profusion of design goals has led to MCMs for languages (such as
+C11 [38] and OpenCL 2.0 [42]), for CPU architectures (such as
+x86, ARM, and IBM Power), and for GPU architectures (such as
+AMD and NVIDIA), that are complicated and counterintuitive. In
+particular, all of these MCMs permit executions that are not sequen-
+tially consistent (SC), which means that they do not correspond to
+a simple interleaving of concurrent instructions [45]. As a result,
+designing and reasoning about MCMs is extremely challenging.
+Responding to this challenge, researchers have built numerous
+automatic tools (see §8). These typically address the question of
+whether a program P, executed under an MCM M , can reach the
+ﬁnal state σ. Put another way: can the litmus test (P, σ) pass under
+M ? While useful, there are several other questions whose answers
+are valuable for MCM reasoning and development. Four that have
+appeared frequently in the literature are:
+Q1
+Which programs can be run to test whether a compiler or
+machine conforms to a given MCM? [11, 24]
+Q2
+Is one MCM more permissive than another? That is, is there
+a litmus test that can pass under one but must fail under the
+other? [11, 14, 43, 48, 50, 58, 63]
+Q3
+Can ‘strengthening’ a program (syntactically) ever enable ad-
+ditional behaviours? For instance, can we take a litmus test that
+must fail, impose additional sequencing or dependencies be-
+tween its instructions (or, in the C11 case, give an atomic op-
+eration a stronger ‘memory order’ [38 (§7.17.3)]), and thereby
+allow it to pass? [21, 22, 55, 77, 79, 80]
+Q4
+Is a given software/architecture compiler mapping correct?
+Or is there a litmus test that must fail under the software-
+level MCM, but which, when compiled, can pass under the
+architecture-level MCM? [15, 16, 46, 47, 81, 82]
+1.1
+Key Idea 1: Generalising the Question
+Our ﬁrst key idea is the observation that all four of the questions
+listed above can be answered, sometimes positively and sometimes
+negatively, by exhibiting programs P and Q and state σ such that
+the litmus test (P, σ) must fail under a given MCM M , P and Q
+1
+Compiled at 10:09 on November 8, 2016
+(P, σ)
+(Q, σ)
+X /∈consistentM
+X ′
+Y ∈consistentN
+Y ′
+▷
+▶
+Figure 1. Diagram for explaining Key Idea 2
+are related by a given binary relation ▶on programs, and (Q, σ)
+can pass under a given MCM N . That is, each corresponds to
+ﬁnding inhabitants of the following set.
+Deﬁnition 1 (General problem). g(M , N , ▶)
+def=
+{(P, Q, σ) | σ /∈obsM (P) ∧P ▶Q ∧σ ∈obsN (Q)}
+where obs returns the set of ﬁnal states that can be observed after
+executing a given program under a given MCM.1
+Our four questions correspond to the following specialisations
+of g’s parameters:
+Q1
+g(M , 0, id) consists of tests that check conformance to M ,
+where 0 is the MCM that allows all executions and id is the
+identity relation;
+Q2
+g(M , N , id) consists of tests that cannot pass under M but
+can under N ;
+Q3
+g(M , M , ‘is weaker than’) consists of monotonicity viola-
+tions in M , given a relation that holds when one program is
+(syntactically) ‘weaker than’ another; and
+Q4
+g(M , N , ‘compiles to’) consists of bugs in a compiler map-
+ping from M to N , given a relation that holds when one pro-
+gram ‘compiles to’ another.
+1.2
+Key Idea 2: Constraining Executions, not Programs
+Having captured in Def. 1 our four questions, we now ask whether
+answers can be generated using an automatic constraint solver. Un-
+fortunately, Def. 1 is problematic because showing that a litmus
+test must fail under M requires universal quantiﬁcation over exe-
+cutions. That is, we must show that there exists a litmus test (P, σ)
+such that all possible executions of P under M do not reach σ. As
+Milicevic et al. observe, ‘this “∃∀” quantiﬁer pattern is a particu-
+larly difﬁcult instance of higher-order quantiﬁcation’ [52], and our
+pilot experiments conﬁrmed it to be intractable in practice.
+Our second ‘key idea’, then, involves rephrasing the constraints
+to be not over programs, but over program executions, where they
+become much cheaper to solve (see Def. 2, below), and then to
+recover litmus tests from these executions. We explain how this is
+possible with reference to Fig. 1.
+We start by ﬁnding individual executions X and Y , such that
+X is inconsistent under M , Y is consistent under N , and X ▷Y .
+From X , we construct a litmus test (P, σ) that can behave like X ,
+and from Y , we construct a litmus test (Q, σ) that can behave like
+Y . The ▷relation between X and Y ensures that these litmus tests
+will have the same ﬁnal state σ and that P ▶Q. We now have a
+litmus test that can fail under M and another that can pass under
+N . But g requires a litmus test that must fail under M , and perhaps
+(P, σ) can still pass by taking a different execution X ′. Example 1
+illustrates how such a situation can arise.
+Example 1. The diagram below (left) depicts a C11 execution.
+Dotted rectangles group events into threads

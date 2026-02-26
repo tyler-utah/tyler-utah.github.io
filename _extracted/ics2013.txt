@@ -1,0 +1,178 @@
+ICS: U: Towards Shared Memory Consistency
+Models for GPUs
+Tyler Sorensen
+University of Utah
+t.sorensen@utah.edu
+Jade Alglave
+University College London
+j.alglave@ucl.ac.uk
+Ganesh Gopalakrishnan
+University of Utah
+ganesh@utah.edu
+Vinod Grover
+NVIDIA
+vgrover@nvidia.com
+I.
+PROBLEM AND MOTIVATION
+A Graphics Processing Unit (GPU) is a compute acceler-
+ated microprocessor designed with many cores and high data
+bandwidth [12, p. 3-5]. These devices were originally used for
+graphics acceleration; however, their high arithmetic through-
+put and energy efﬁciency made them attractive for use in other
+applications. In 2006, NVIDIA released their ﬁrst general-
+purpose GPU that supported the CUDA architecture [19, p.
+6] which allowed programmers to develop applications more
+easily that run on GPUs. Since then, GPUs have continued
+to be used in many applications and are present in devices
+ranging from the top supercomputers [22] to smartphones and
+tablets [27].
+GPUs are concurrent shared memory devices and share
+many of the concurrency considerations as their multicore CPU
+counterparts. One example, and our focus, is the architecture’s
+shared memory consistency model (or memory model for short)
+which governs the values that can be read from memory when
+issued concurrently with other reads and writes.
+While memory models for CPUs have been well studied
+[3, 24], GPUs have a substantially different concurrency and
+memory system. Despite this, GPU vendor documentation
+on memory models remains sparse. For example, the doc-
+umentation for NVIDIA’s low level intermediate language
+PTX [16] has less than two pages describing the memory
+fences and no examples. Without a well speciﬁed memory
+model, programmers cannot write robust and portable code
+using custom synchronization idioms (e.g. locks, non-blocking
+data structures). Furthermore expensive and critical scientiﬁc
+simulation results could be cast into serious doubt.
+This work presents several contributions towards better
+understanding of GPU memory models. First we propose a
+variety of litmus tests for GPUs. These tests describe relaxed
+coherence and shed light on scope-sensitive memory fence
+behavior — a unique aspect of GPUs. Next we discuss the
+operational semantics for a putative GPU operational memory
+model which we dub the Utah GPU (or UGPU) model. This
+proposed model captures the semantics of basic load, store,
+and scoped fence instructions. The model is implemented in
+the Murphi modeling language [7] and is able to run our GPU
+litmus tests. This work was originally presented in [23].
+While the UGPU model can reason about an idealistic GPU
+memory model, it is unclear how well it describes deployed
+hardware and hence, how useful it is to the practitioner. To this
+end, we present ongoing work to extend the litmus hardware
+testing tool [2] to test GPUs. With this, we show that GPUs
+Fig. 1.
+Thread hierarchy and memory regions of a GPU architecture.
+implement weak memory models with subtle scoped properties
+unseen in CPU models; we then compare the UGPU model to
+our experimental observations. We show that older NVIDIA
+chips (Kepler) implement a controversial relaxed coherence
+behavior while newer chips (Maxwell) do not. Finally, we
+show that a published implementation of a GPU spin-lock
+[19, p. 250-258] does not provide sufﬁcient synchronization
+to implement what is generally considered correct for a lock.
+II.
+BACKGROUND AND RELATED WORK
+A. GPU Architecture
+GPU architectures have several key differences from their
+CPU counterparts. Developers have explicit access to the
+location of threads in the GPU thread hierarchy and can
+design programs using this information; threads that share ﬁner
+grained levels of the hierarchy enjoy accelerated interactions
+and additional functionality. For example, one level of the
+hierarchy is called a block. A GPU program often has many
+blocks, and threads residing in the same block have access
+to a fast region of memory called shared memory. Threads in
+different blocks cannot access the same shared memory region
+and must use the slower global memory region to share data
+[15, p. 10-12]. The thread hierarchy and memory regions of a
+single GPU device are shown in Figure 1.
+B. Memory Models, Litmus Tests and Testing
+For a given program and architecture, a memory model
+deﬁnes the set of values that the load instructions are allowed
+to return. That is, it speciﬁes all possible behaviors of shared
+memory interactions. Our work describes an operational-
+semantic (or operational for short) memory model, which
+initial state: x = 0, y = 0
+Thread 1
+Thread 2
+a: *x = 1;
+b: r1 = *y;
+c: *y = 1;
+d: r2 = *x;
+assert: r1 = 0 ∧r2 = 0
+Fig. 2.
+Classic Store Buffering Litmus test. This assertion cannot be satisﬁed
+under an SC memory model.
+means that the system is described as an abstract machine.
+Given the current state of the system, the operational model
+will provide all possible transitions the system could take
+and how the system state is updated based on the transition;
+examples of operational models include [20, 21]. Memory
+models may alternatively be deﬁned in an axiomatic style
+where constraints are described on sets and relations over
+memory actions; for examples of this type of model see
+[1, 3, 14].
+An intuitive way to understand memory models is through
+litmus tests, i.e. short concurrent programs with an assertion
+about the ﬁnal states of registers and memory. Litmus tests
+are evaluated under a memory model and can be allowed
+(the assertion sometimes passes) or disallowed (the assertion
+never passes). Figure 2 shows a litmus test known as store
+buffering. Litmus tests are prevalent illustrations in memory
+model literature [1, 3, 17].
+Many programmers reason about concurrent programs un-
+der the sequentially consistent memory model (or simply SC),
+ﬁrst deﬁned by Lamport in 1979 [13]. That is, a concurrent
+execution must correspond to some interleaving of the in-
+structions. However, modern multiprocessors (e.g. x86, ARM)
+implement weak memory models, where executions may not
+correspond to an interleaving. Weak architectures provide fence
+instructions to restore orderings. Figure 3 shows how one
+would reason about the store buffering litmus test under SC.
+While the litmus test assertion will never be allowed under
+SC, it is observable on x86 chips if fences are not used [17].
+Some possible interleavings of store buffering litmus test
+Interleaving 1
+Interleaving 2
+...
+a: *x = 1;
+b: r1 = *y;
+c: *y = 1;
+d: r2 = *x;
+a: *x = 1;
+c: *y = 1;
+b: r1 = *y;
+d: r2 = *x;
+c: ...
+a: ...
+b: ...
+d: ...
+ﬁnal: r1 = 0 ∧r2 = 1
+ﬁnal: r1 = 1 ∧r2 = 1
+...
+Fig. 3.
+Examining some possible interleaving of the store buffering litmus
+test (see Figure 2). The litmus test assertion cannot be satisﬁed in SC.
+The GPU testing framework we present is an extension of
+the Litmus tool [2] which runs litmus tests on different CPU
+architectures, (e.g. x86 and ARM). ARCHTEST and TSOTool
+[6, 8] are earlier memory model testing tools.
+C. GPU Memory Models
+The past few years have seen considerable activity in
+academia w.r.t. GPU memory models [9–11]. We consider this
+work part of that effort and hope to see the same level of
+rigorous testing and modeling applied to GPU memory models
+as CPU memory models have enjoyed [3, 21, 24]. We outline
+some recent work in this area:
+In June 2013, Hower et al. proposed an SC for RF (i.e.
+a race-free program only has SC executions) memory model
+for GPUs [10]. Using scoped atomic operations, they build a
+happens-before relationship and use it to deﬁne a race which
+they call a heterogeneous race.
+Also in June 2013, Hechtman and Sorin [9] showed that
+in a particular model of GPU and for common programming
+idioms on GPUs, weak memory consistency has negligible
+beneﬁts. Because of this, SC is an attractive choice for their
+model of GPUs. Our testing work shows that despite their
+analysis, current GPUs do implement weak memory models.
+In January 2014, Hower et al. [11] presented two SC
+for heterogeneous-RF memory mo

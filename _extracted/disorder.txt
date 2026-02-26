@@ -1,0 +1,187 @@
+MEMORY DISORDER: Memory Re-orderings as a Timerless Side-channel
+Sean Siddens†
+Sanya Srivastava
+Reese Levine
+University of Washington
+Duke University
+UC Santa Cruz
+Josiah Dykstra†
+Tyler Sorensen†
+Raytheon BBN Technologies
+Microsoft Research
+UC Santa Cruz
+Abstract
+To improve efficiency, nearly all parallel processing units
+(CPUs and GPUs) implement relaxed memory models in
+which memory operations may be re-ordered, i.e., executed
+out-of-order. Prior testing work in this area found that memory
+re-orderings are observed more frequently when other cores
+are active, e.g., stressing the memory system, which likely
+triggers aggressive hardware optimizations.
+In this work, we present MEMORY DISORDER: a timerless
+side-channel that uses memory re-orderings to infer activ-
+ity on other processes. We first perform a fuzzing campaign
+and show that many mainstream processors (X86/Arm/Apple
+CPUs, NVIDIA/AMD/Apple GPUs) are susceptible to cross-
+process signals. We then show how the vulnerability can be
+used to implement classic attacks, including a covert chan-
+nel, achieving up to 16 bits/second with 95% accuracy on
+an Apple M3 GPU, and application fingerprinting, achiev-
+ing reliable closed-world DNN architecture fingerprinting on
+several CPUs and an Apple M3 GPU. Finally, we explore
+how low-level system details can be exploited to increase
+re-orderings, showing the potential for a covert channel to
+achieve nearly 30K bits/second on X86 CPUs. More precise
+attacks can likely be developed as the vulnerability becomes
+better understood.
+1
+Introduction
+Modern shared memory parallel processors implement com-
+plex pipelines and memory systems. This complexity in-
+creases efficiency but has also led to security issues, especially
+in multiprocessing systems, where sensitive information from
+one process can be obtained by another (potentially malicious)
+process. Side-channel attacks are especially nefarious, as the
+attacker can utilize low-level device details to detect subtle
+properties of an unassuming victim process.
+There are many types of side-channels, utilizing many dif-
+ferent system components. Some side-channels require physi-
+†Work performed while at Trail of Bits.
+cal access [49], while others require access to low-level APIs,
+e.g., to monitor energy [14]. The attack requirements are
+referred to as the capability of the attack. A low capability at-
+tack has few requirements and, thus, can be deployed in more
+situations. For example, classic cache-based side-channels
+require precise timers [26]. However, the capability of the
+attack can be lowered by removing the timers and instead
+using other (seemingly innocent) mechanisms [38].
+MEMORY DISORDER
+In this work, we present MEMORY
+DISORDER (or simply DISORDER): a low-capability side-
+channel for parallel processors. DISORDER utilizes memory
+re-orderings that arise due to hardware relaxed memory consis-
+tency models (or MCMs) [32]. That is, to increase efficiency,
+mainstream consumer parallel processors allow memory op-
+erations to execute out-of-order, as specified by their MCM.
+These behaviors occur both on CPUs [4,39] and GPUs [22].
+Memory re-orderings can be observed in small parallel pro-
+grams, often called litmus tests, which typically execute with
+two threads with two memory operations each. By inspecting
+certain variable and memory values after the test execution, it
+can be determined if a re-ordering occurred.
+Prior works have run these litmus tests across many dif-
+ferent processors to test conformance to an MCM specifica-
+tion. When testing GPUs, it was found that the number of
+observed re-orderings could be amplified by utilizing addi-
+tional threads that added stress to the system [3]. Inspired by
+these results, this paper explores the potential of memory re-
+orderings as a side-channel, where one (potentially malicious)
+process repeatedly executes a litmus test, requiring only the
+ability to launch threads and execute memory loads and stores.
+Other (victim) processes may create identifiable patterns of
+system pressure when executing certain programs, causing
+re-orderings to be observed by another process.
+1
+arXiv:2601.08770v1  [cs.CR]  13 Jan 2026
+Initially: *x == 0 && *y == 0
+thread 0
+thread 1
+a
+Write(x, 1)
+c
+v0 = Read(y)
+b
+Write(y, 1)
+d
+v1 = Read(x)
+re-order check: v0 == 1 && v1 == 0
+Figure 1: The Message Passing (MP) litmus test. Thread
+0 writes to x and then y. Thread 1 reads the values in the
+opposite order. If thread 1 observes the updated value for y
+before the updated value for x, then a re-ordering occurred.
+0
+10
+20
+30
+40
+50
+60
+Memory Re-orderings
+0%
+1%
+2%
+3%
+4%
+5%
+6%
+7%
+8%
+Frequency
+resnet50
+googlenet
+vgg16
+mobilenetv3
+alexnet
+Figure 2: Histogram of re-ordering observations by an at-
+tacker when a victim is running inference from common
+DNN architectures on an Apple M3 GPU.
+1.1
+Example: DNN Architecture Fingerprint-
+ing
+We illustrate the potential of DISORDER using an example in
+which there are two processes: a victim and an attacker. The
+victim process repeatedly runs DNN inference on an Apple
+M3 GPU, which is known to have a relaxed MCM [19]. The
+attacker repeatedly executes a classic litmus test, known as
+Message Passing (or MP), shown in Fig. 1. In order to satisfy
+the re-order check for this test, either the writes on thread 0
+or the reads on thread 1 must be re-ordered. Because these
+tests are short, the attacker can execute many iterations while
+the victim is executing DNN inference.
+Figure 2 shows a histogram of the frequency of ob-
+served memory re-orderings by the attacker when the vic-
+tim is running 5 different (common) DNN architectures:
+resnet50, googlenet, vgg16, mobilenetv3_small (reported as
+mobilenetv3 in the figure), and alexnet. We see that each DNN
+produces a unique signature, i.e., an approximate normal dis-
+tribution of observed re-orderings. We then split these obser-
+vations into a training and testing set (discussed in Sec. 5.2)
+and show that an attacker can automatically classify which
+DNN architecture a victim is running.
+1.2
+MEMORY DISORDER Overview
+This paper provides a detailed investigation into the potential
+of memory re-orderings as a side-channel. While there are
+many low capability side-channels, e.g., see [51], we believe
+MEMORY DISORDER has a range of unique properties:
+1. Low capability: DISORDER only requires two threads
+and shared memory; it does not require timers, perfor-
+mance counters, or physical access.
+2. Wide reach: Mainstream processors (CPUs and GPUs)
+implement relaxed MCMs, which are accessible through
+common programming languages, e.g., C++ [11].
+3. Empirically based: Many side-channels target low-level
+hardware components through meticulous reverse en-
+gineering [2, 33, 51]. DISORDER attacks can be con-
+structed using simple empirical fuzzing techniques.
+4. Unknown potential and mitigations: The exact hardware
+component(s) that cause a memory re-ordering are not
+documented or well-understood. As such, it is difficult to
+develop rigorous mitigations, and more targeted attacks
+can likely be developed through detailed explorations.
+This work focuses on the feasibility and breadth of DISOR-
+DER: we show that six different architectures are impacted,
+spanning both CPUs as well as GPUs; furthermore, we show
+that this vulnerability crosses virtualization boundaries (KVM
+on Linux). While it is not feasible to reverse engineer the com-
+plex hardware interactions that cause memory re-orderings
+across all these devices, we provide an initial investigation
+into how more targeted approaches can improve re-ordering
+observations (i.e., signals) by several orders of magnitude on
+X86 CPUs (Sec. 5.3). In other cases, we provide hypothe-
+ses and reference documentation when available and leave
+more detailed explorations to future work. Thus, DISOR-
+DER attacks can be developed with either (1) low precision
+using only simple empirical data, or (2) higher-precision, con-
+structed by thorough reverse engineering.
+We found only one prior security work propos

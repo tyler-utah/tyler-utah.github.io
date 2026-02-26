@@ -1,0 +1,109 @@
+SafeRace: Assessing and Addressing WebGPU Memory Safety
+in the Presence of Data Races
+REESE LEVINE, University of California at Santa Cruz, USA
+ASHLEY LEE, University of California at Santa Cruz, USA
+NEHA ABBAS, University of California at Santa Cruz, USA
+KYLE LITTLE, University of California at Santa Cruz, USA
+TYLER SORENSEN, Microsoft, USA and University of California at Santa Cruz, USA
+In untrusted execution environments such as web browsers, code from remote sources is regularly executed.
+To harden these environments against attacks, constituent programming languages and their implementations
+must uphold certain safety properties, such as memory safety. These properties must be maintained across
+the entire compilation stack, which may include intermediate languages that do not provide the same safety
+guarantees. Any case where properties are not preserved could lead to a serious security vulnerability.
+In this work, we identify a specification vulnerability in the WebGPU Shading Language (WGSL) where
+code with data races can be compiled to intermediate representations in which an optimizing compiler could
+legitimately remove memory safety guardrails. To address this, we present SafeRace, a collection of threat
+assessments and specification proposals across the WGSL execution stack. While our threat assessment
+showed that this vulnerability does not appear to be exploitable on current systems, it creates a "ticking
+time bomb", especially as compilers in this area are rapidly evolving. Given this, we introduce the SafeRace
+Memory Safety Guarantee (SMSG), two components that preserve memory safety in the WGSL execution
+stack even in the presence of data races. The first component specifies that program slices contributing to
+memory indexing must be race free and is implemented via a compiler pass for WGSL programs. The second
+component is a requirement on intermediate representations that limits the effects of data races so that they
+cannot impact race-free program slices. While the first component is not currently possible to apply to all
+WGSL programs due to limitations on how some data types can be accessed, we show that existing language
+constructs are sufficient to implement this component with minimal performance overhead on many existing
+important WebGPU applications. We test the second component by performing a fuzzing campaign of 81 hours
+across 21 compilation stacks; our results show violations on only one (likely buggy) machine, thus providing
+evidence that lower-level GPU frameworks could relatively straightforwardly support this constraint. Finally,
+our assessments discovered GPU memory isolation vulnerabilities in Apple and AMD GPUs, as well as a
+security-critical miscompilation of WGSL in a pre-release version of Firefox.
+CCS Concepts: • Security and privacy →Web application security; • Software and its engineering →
+Semantics; Compilers; • Computing methodologies →Parallel programming languages.
+Additional Key Words and Phrases: data races, memory safety, GPU programming languages
+ACM Reference Format:
+Reese Levine, Ashley Lee, Neha Abbas, Kyle Little, and Tyler Sorensen. 2025. SafeRace: Assessing and Ad-
+dressing WebGPU Memory Safety in the Presence of Data Races. Proc. ACM Program. Lang. 9, OOPSLA2,
+Article 297 (October 2025), 29 pages. https://doi.org/10.1145/3763075
+Authors’ Contact Information: Reese Levine, University of California at Santa Cruz, Santa Cruz, USA, relevine@ucsc.edu;
+Ashley Lee, University of California at Santa Cruz, Santa Cruz, USA, allilee@ucsc.edu; Neha Abbas, University of California
+at Santa Cruz, Santa Cruz, USA, neabbas@ucsc.edu; Kyle Little, University of California at Santa Cruz, Santa Cruz, USA,
+kyle.little@utah.edu; Tyler Sorensen, Microsoft, Seattle, USA and University of California at Santa Cruz, Santa Cruz, USA,
+tyler.sorensen@ucsc.edu.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+© 2025 Copyright held by the owner/author(s).
+ACM 2475-1421/2025/10-ART297
+https://doi.org/10.1145/3763075
+Proc. ACM Program. Lang., Vol. 9, No. OOPSLA2, Article 297. Publication date: October 2025.
+297:2
+Reese Levine, Ashley Lee, Neha Abbas, Kyle Little, and Tyler Sorensen
+i: array<u32, 1>, m: array<u32, 4>
+Thread 0
+Thread 1
+a: i[0] = 2
+c: i[0] = 4
+... // some computation
+b: let r0 = m[min(i[0], 3)]
+(a) Program with a data race on i[0], which is
+used to index into m.
+i: array<u32, 1>, m: array<u32, 4>
+Thread 0
+Thread 1
+a: i[0] = 2
+c: i[0] = 4
+var x = 2
+b: let r0 = m[min(x, 3)]
+(b) Program with a data race on i[0], with x used
+to index into m.
+Fig. 1. WGSL compilers insert dynamic bounds-checks (shown in red) to provide memory safety. We show
+that under current specifications the bounds-checks can be optimized away in either program, leading to
+potential memory safety violations.
+1
+Introduction
+A programming language is safe with respect to some property if it guarantees that property will
+hold throughout the entire compilation process, and thus, during execution. One important property
+is memory safety, which prevents behaviors such as out-of-bounds and use-after-free accesses. This
+property is especially important as some of the most notorious exploits and vulnerabilities found
+in recent decades are related to memory safety [17–19]; furthermore, large-scale corporate studies
+have found that the majority of all vulnerabilities are related to memory safety [8, 11].
+Memory isolation vulnerabilities, in which a process can accesses the memory of another process,
+are one class of vulnerabilities that can occur when memory safety is violated. The risk of memory
+isolation vulnerabilities has led to the development of memory-safe languages, including languages
+such as JavaScript and WebAssembly (Wasm) for web browsers. At the same time, runtimes, e.g.,
+operating systems, have developed protections to maintain memory isolation, e.g., exceptions and
+segmentation faults, even when executing programs written in memory-unsafe languages like C++.
+However, due to their lean (and performance oriented) implementations, GPUs might not have
+these defensive runtimes, nor other mechanisms that provide memory protection. Furthermore,
+because essentially all modern consumer devices allow multiple processes to share access to the
+GPU, these devices are increasingly receiving attention in the security community; including
+the discovery of several notable cases of memory isolation vulnerabilities [65, 79]. Running GPU
+programs in web browsers amplifies security risks even further, as web pages can execute untrusted
+code and thus, may maliciously try to access data from other tabs or applications.
+Despite these risks, GPUs enable many important applications on the web, such as AI where a
+single GPU can now run LLM inference [24, 77, 92]. WebGPU, the successor to WebGL, is a frame-
+work that brings first-class support for general-purpose GPU computation to browsers. WebGPU
+programs are written in a high-level language, WGSL, which is documented to enforce memory
+safety. However, this guarantee is not straightforward, as WGSL is not directly translated into
+GPU machine code; instead, WGSL programs are translated to lower-level native GPU languages
+before being compiled to vendor-specific (and sometimes closed-source) GPU machine code. There-
+fore, WGSL relies on lower-level compilers and runtimes to maintain safety properties during
+optimization passes and execution.
+If a valid implementation of a programming language specification can break a language’s safety
+property, we say that there exists a specification vulnerability. This work identifies a data race
+specification vulnerability (DRSV) in WGSL and discusses how it can be assessed and addressed.
+Proc. ACM Program. Lang., Vol. 9, No. OOPSLA2, Article 297. Publication date: October 2025.
+SafeRace: Assessing and Addressing WebGPU Memory Safety in the Presence of Data Races
+297:3
+1.1
+WGSL Data Race Specification Vulnerability
+In many languages, e.g., C a

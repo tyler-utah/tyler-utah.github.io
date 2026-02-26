@@ -1,0 +1,237 @@
+MosaicSim: A Lightweight, Modular Simulator for
+Heterogeneous Systems
+Opeoluwa Matthews∗
+Aninda Manocha∗
+Davide Giri†
+Marcelo Orenes-Vera∗
+Esin Tureci∗
+Tyler Sorensen∗‡
+Tae Jun Ham§
+Juan L. Arag´on¶
+Luca P. Carloni†
+Margaret Martonosi∗
+∗Princeton University
+†Columbia University
+‡UC Santa Cruz
+§Seoul National University
+¶University of Murcia
+Abstract—As Moore’s Law has slowed and Dennard Scaling
+has ended, architects are increasingly turning to heterogeneous
+parallelism and domain-speciﬁc hardware-software co-designs.
+These trends present new challenges for simulation-based perfor-
+mance assessments that are central to early-stage architectural
+exploration. Simulators must be lightweight to support rich het-
+erogeneous combinations of general purpose cores and specialized
+processing units. They must also support agile exploration of
+hardware-software co-design, i.e. changes in the programming
+model, compiler, ISA, and specialized hardware.
+To
+meet
+these
+challenges,
+we
+introduce
+MosaicSim,
+a
+lightweight, modular simulator for heterogeneous systems, of-
+fering accuracy and agility designed speciﬁcally for hardware-
+software co-design explorations. By integrating the LLVM
+toolchain, MosaicSim enables efﬁcient modeling of instruction
+dependencies and ﬂexible additions across the stack. Its modu-
+larity also allows the composition and integration of different
+hardware components. We ﬁrst demonstrate that MosaicSim
+captures architectural bottlenecks in applications, and accurately
+models both scaling trends in a multicore setting and accelerator
+behavior. We then present two case-studies where MosaicSim
+enables straightforward design space explorations for emerging
+systems, i.e. data science application acceleration and heteroge-
+neous parallel architectures.
+Index Terms—heterogeneity, hardware-software co-design, per-
+formance modeling, multi-core architectures, accelerators
+I. INTRODUCTION
+The last decade has seen a trend of increasing parallelism as
+a response to the ending of Moore’s Law and Dennard scaling.
+Figure 1 presents microprocessor trends over the past few
+decades. As computing frequency (red triangles) has plateaued,
+the number of logical cores (blue squares) has increased.
+The stagnation in raw computing frequency has also triggered
+the usage of specialized systems, including heterogeneous
+architectures and hardware-software co-design, to meet the
+demands of today’s aggressive performance and power goals.
+Designers of modern systems are therefore employing combi-
+nations of distinct computation elements, including small, low-
+power cores and high-performing hardware accelerators [1–3].
+In their Turing award lecture, Hennessy and Patterson
+describe a New Golden Age for Computer Architecture,
+where future performance improvement opportunities encour-
+age vertically-integrated system designs [4]. Such systems
+require innovation in programming models, compilers, spe-
+cialized hardware, and ISAs. Hence, the system design space
+1970
+1980
+1990
+2000
+2010
+10
+0
+10
+1
+10
+2
+10
+3
+10
+4
+10
+5
+10
+6
+10
+7
+Number of Logical Cores
+Transistors (thousands)
+Typical Power, (Watts)
+Frequency (MHz) 
+Single Thread Perf (SpecInt x 1k)
+Fig. 1.
+42 years of trend data for microprocessor characteristics, graph
+recreated using data from [7]
+has seen a Cambrian explosion in diversity at all levels of the
+stack, necessitating ﬂexible tools for design space exploration.
+Well-known simulators, e.g. gem5 [5], offer detailed simu-
+lation infrastructures for conventional microarchitectures, but
+make it difﬁcult for a designer to explore changes across other
+layers of the stack, which have increasing inﬂuence in the per-
+formance of systems today. Other approaches resort to high-
+level simulation (e.g. 1-IPC models or interval simulation [6])
+that do not accurately capture critical memory bottlenecks of
+many modern data-intensive applications.
+We present MosaicSim, a simulation approach that allows
+for the exploration of optimizations across the hardware-
+software stack, while providing accurate modeling of perfor-
+mance bottlenecks and application characteristics. To achieve
+these goals, we leverage the LLVM framework [8], which
+allows us to utilize a mature compiler infrastructure to capture
+instruction dependencies and collect memory traces. Mosaic-
+Sim executes LLVM IR, which enables ISA-agnostic sim-
+ulation and supports ﬂexible programming models through
+compiler passes and specialized instructions. MosaicSim then
+simulates the LLVM IR instructions on modular tile models,
+which enables straightforward design space exploration of
+heterogeneous systems. Furthermore, tile modules support
+a ﬂexible communication model, which allows data-supply
+hardware-software co-designs to be evaluated.
+. . .
+Interleaver
+LLC
+DRAM
+Type
+Tile
+0
+1
+2
+N
+OoO core
+Accelerator
+InO core
+...
+Object Pointer
+...
+...
+...
+TILE0_PTR
+OoO
+core
+.
+Accel.
+L1
+Accel.
+OoO
+core
+.
+L1
+OoO
+core
+.
+L1
+Accel.
+InO
+core
+.
+L1
+InO
+core
+.
+L1
+Interleaver Tile Map
+. . .
+  
+progress( ){
+    calculate_delay (node);
+    push_call (trans); 
+  }
+for (t in tiles){
+  step += t.progress();
+  trans = t.pop_call();
+  cycle++ ;}
+TILE 0
+DDG context
+TILES
+. . .
+OoO
+core
+.
+L1
+Fig. 2. MosaicSim integrates different modules (e.g. CPUs and accelerators)
+via the Interleaver, which combines module behaviors into system-wide
+performance estimates.
+To summarize, MosaicSim is a lightweight, modular sim-
+ulator for heterogeneous and hardware-software co-design
+systems. Its main contributions are:
+• Enabling ﬂexible programming models, compiler tech-
+niques and ISAs through integration with LLVM.
+• Abstract tile models, which capture key performance
+microarchitectural details for a variety of core models
+and accelerators.
+• A holistic simulation approach that allows for the com-
+position of different hardware tiles and communication
+structures, allowing for the simulation of complex het-
+erogeneous systems.
+We evaluate MosaicSim and demonstrate that it:
+• Accurately captures trends on existing parallel architec-
+tures and accelerators (Section VI).
+• Is able to simulate complex heterogeneous systems, illus-
+trated through three case studies (Section VII).
+II. MOSAICSIM OVERVIEW
+This section describes an overview of the MosaicSim sim-
+ulation methodology. At a high level, MosaicSim provides
+tile-based models of different hardware units, including cores,
+accelerators, and caches, with an Interleaver that composes
+their behaviors to provide total system estimates.
+Tiled System Model: Figure 2 displays the tiled system
+model in MosaicSim. The overall design represents an SoC
+comprised of CPU and accelerator tiles. Each tile in the
+SoC has a model of its events that contribute to the perfor-
+mance and power of the entire system, and the Interleaver
+coordinates the interactions of events from different tiles.
+MosaicSim simulates a simple homogeneous chip multipro-
+cessor by instantiating several CPU tiles and allowing the
+Interleaver to coordinate their interactions, e.g. coordinating
+shared memory hierarchy behavior. Additionally, MosaicSim
+can simulate more heterogeneous processors by providing (and
+hence, interleaving) more diverse models. As a design process
+evolves, accelerators or other specialized hardware can be in-
+corporated as Section IV describes. The direct linkage with an
+LLVM-based compiler allows straightforward decomposition
+into models for different units.
+As an early-stage tool that targets design space exploration
+for hardware-software co-design, MosaicSim focuses on ker-
+nel simulation. This allows for modeling compute or memory
+bottlenecks in order to provide hardware designers with the
+necessary insight to make design decisions (e.g. employing
+accelerators) accordingly. MosaicSim is not restricted to kernel
+modeling and can simulate arbitrary codes as long as LLVM-
+IR can be obtained. However, full application simulation
+requires performance models that are often only available in
+later design stages, e.g. ﬁlesystem I/O and system calls.
+T

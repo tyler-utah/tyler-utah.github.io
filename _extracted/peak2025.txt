@@ -1,0 +1,90 @@
+PEAK: A Performance Engineering AI-Assistant for GPU
+Kernels Powered by Natural Language Transformations
+MUHAMMAD USMAN TARIQ, Stanford University, USA
+ABHINAV JANGDA, Microsoft Research Redmond, USA
+ANGELICA MOREIRA, Microsoft Research Redmond, USA
+MADAN MUSUVATHI, Microsoft Research Redmond, USA
+TYLER SORENSEN, Microsoft Research Redmond and University of California Santa Cruz, USA
+Advancements in large language models (LLMs) are showing promising impact in software development and
+programming assistance. However, these models struggle when operating on low-level backend code. This
+challenge is exacerbated in the domain of GPU kernels, where performance-critical details are coupled to
+rapidly evolving hardware characteristics and available code examples are sparse.
+In this work, we introduce Peak, a Performance Engineering AI-Assistant for GPU Kernels powered by
+natural language transformations. Peak utilizes the key insight that iterative code transformations (opti-
+mizations) can straightforwardly be written in natural language, and then carried out by LLMs. Thus, these
+transformations can be rapidly developed, encoding general portable optimizations, but also easily specialized
+to specific GPU devices and even kernels. These natural transformations are supported by a modular and
+extensible infrastructure that additionally performs validation and performance evaluation. We demonstrate
+the flexibility of Peak by instantiating it for three backends, CUDA, HIP, and HLSL, and create 16 natural
+transformations for optimizing matrix multiplication kernels. We show that our resulting implementations are
+competitive with vendor libraries when available, and for HLSL (without a library) our implementations match
+the hardware documented FLOPS. Peak allows the fine-grained exploration of several research questions
+around how LLMs behave in this domain, including characterizing transformations and their errors; and how
+performance evolves along optimization sequences. Peak provides an interface that can either be utilized by
+performance engineers to improve productivity, or driven completely autonomously (e.g., by an AI agent),
+providing a forward-compatible design that can continue to improve with advances in AI capabilities.
+1
+INTRODUCTION
+Advances in large language models (LLMs) have significantly impacted software development,
+assisting, or even fully automating, a range of programming tasks [2, 13]. Due to the abundance of
+high-level code examples and mature frameworks, LLMs have been most effective in front-end and
+application-level domains, while low-level backend programming remains a greater challenge [5].
+Nonetheless, given the potential of LLMs to improve productivity and democratize software devel-
+opment, extending AI assistance to lower-level code is a promising research direction. GPU kernels
+are a natural target: they are notoriously difficult to write and tune, yet have enormous performance
+implications, particularly in the context of modern AI workloads. Even modest reduction in kernel
+runtime can yield significant gains in cost efficiency and energy consumption, especially at scale.
+Despite efforts to provide more accessible GPU programming languages [38, 39], development
+of efficient GPU kernels remains a domain reserved for experts, requiring deep understanding of
+complex memory and concurrency hierarchies, synchronization models, and architecture-specific
+optimizations. Compilers for these programming languages necessarily aim to be general-purpose,
+while maximizing performance requires performing optimizations that are specific to the kernel, the
+particular hardware backend, and possibly specific sizes of the inputs. Even if specialized compilers
+are engineered to optimize to the peak performance for some kernels, the GPU ecosystem evolves
+rapidly, with new architectural features required to fully exploit hardware capabilities, making it
+Authors’ addresses: Muhammad Usman Tariq, Stanford University, USA; Abhinav Jangda, Microsoft Research Redmond,
+USA; Angelica Moreira, Microsoft Research Redmond, USA; Madan Musuvathi, Microsoft Research Redmond, USA; Tyler
+Sorensen, Microsoft Research Redmond and University of California Santa Cruz, USA.
+2
+Muhammad Usman Tariq, Abhinav Jangda, Angelica Moreira, Madan Musuvathi, and Tyler Sorensen
+very difficult for these frameworks to keep up. However, performance engineering efforts tend to
+follow some structure; if this structure can be captured, especially utilizing new AI capabilities,
+then there may be opportunities to impact this domain.
+Recognizing this potential, there have been several prior (and ongoing) efforts to generate
+optimized GPU kernels using AI, spanning academic work, large tech companies, and startups. For
+example, KernelBench [27] and the AI CUDA Engineer [29] explores optimizing CUDA kernels
+in PyTorch using LLMs. NVIDIA has demonstrated how LLMs can be used to optimize attention
+kernels [8], and several startups appears to be building a product around this use case, e.g., see [33–
+35]. While these efforts introduce promising techniques for transforming GPU code, they share a
+critical limitation: most adopt an all-or-nothing and opaque approach to automation, with minimal
+support for human-AI collaboration, interpretable iterative refinement, or extensible modular
+interfaces. This rigidity has led to brittle behavior and unintended side effects, in two cases, the
+system made critical mistakes which were not caught by the testing infrastructure [24, 40].
+1.1
+PEAK: Optimizing GPU Kernels through Natural Language Transformations
+This paper presents Peak, a GPU kernel optimization framework, powered by natural language
+transformation specifications executed by LLMs, to assist performance engineers. Peak captures
+the essence of expert performance-engineering processing with the following components:
+Natural Transformations. Performance engineers deploy a set of optimization strategies, each
+expressed informally in natural language (either explicitly as documentation or implicitly in their
+thinking). Peak’s core contribution is to embrace this concept through natural transformations.
+These natural transformations are written in natural language and range from general strategies,
+such as "unroll a loop" to precise directives, such as "tile the inner loop over the K dimension," that
+are specific to the kernel being optimized. Because natural transformations are simple to write (e.g.,
+as compared to formal compiler passes), they can be highly specialized to a specific kernel.
+Kernel Context. A kernel context consists of a GPU kernel, host-side code that launches the
+kernel, input sizes, and a set of performance tuning parameters. This provides sufficient scope to
+perform aggressive optimizations (matching the performance of handwritten libraries for complex
+kernels), while also checking correctness and analyzing performance. Natural transformations can
+transform one kernel context into a new kernel context using LLMs.
+Correctness Validators and Performance Evaluators. GPU kernels are complex, as they are executed
+by many threads across a complex hierarchy with features that are often poorly documented; errors
+are common, even when programmed by experts, let alone generated by an LLM. Thus, any natural
+transformation should be rigorously checked. Thus, Peak provides an interface for correctness
+validators to check the functional correctness of a kernel context. The base correctness validator
+simply compares kernel output values to a baseline. Moreover, Peak exposes an extensible interface
+for adding backend-specific validators, such as the compute sanitizers from NVIDIA. In the case of a
+failure, a previous kernel context can be restored; from this, the LLM could simply retry, or fall back
+to human-in-the-loop debugging, enabling developers to refine or rephrase natural transformations.
+Similar to the correctness validators, the performance evaluators operate on a kernel context.
+These

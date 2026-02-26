@@ -1,0 +1,255 @@
+The Hitchhiker’s Guide to Cross-Platform OpenCL
+Application Development
+Tyler Sorensen
+Imperial College London
+t.sorensen15@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London
+alastair.donaldson@imperial.ac.uk
+ABSTRACT
+One of the beneﬁts to programming of OpenCL is plat-
+form portability.
+That is, an OpenCL program that fol-
+lows the OpenCL speciﬁcation should, in principle, execute
+reliably on any platform that supports OpenCL. To assess
+the current state of OpenCL portability, we provide an ex-
+perience report examining two sets of open source bench-
+marks that we attempted to execute across a variety of GPU
+platforms, via OpenCL. We report on the portability issues
+we encountered, where applications would execute success-
+fully on one platform but fail on another. We classify issues
+into three groups: (1) framework bugs, where the vendor-
+provided OpenCL framework fails; (2) speciﬁcation limita-
+tions, where the OpenCL speciﬁcation is unclear and where
+diﬀerent GPU platforms exhibit diﬀerent behaviours; and
+(3) programming bugs, where non-portability arises due to
+the program exercising behaviours that are incorrect or un-
+deﬁned according to the OpenCL speciﬁcation. The issues
+we encountered slowed the development process associated
+with our sets of applications, but we view the issues as pro-
+viding exciting motivation for future testing and veriﬁcation
+eﬀorts to improve the state of OpenCL portability; we con-
+clude with a discussion of these.
+1.
+INTRODUCTION
+Open Computing Language (OpenCL) is a general-purpose
+parallel programming model, designed to be implementable
+on a range of devices including CPUs, GPUs, and FP-
+GAs [17].
+Much like mainstream programming languages
+(e.g. C and Java), the OpenCL speciﬁcation describes ab-
+stract semantics. Concrete platforms that support OpenCL
+are then responsible for providing a framework that success-
+fully executes applications according to the abstract spec-
+iﬁcation.
+This contract between programming model and
+platform enables portability; that is, a programmer can de-
+velop programs based on the speciﬁcation and then execute
+the program on any platform that supports the program-
+ming model.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for proﬁt or commercial advantage and that copies bear this notice and the full citation
+on the ﬁrst page. Copyrights for components of this work owned by others than the
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior speciﬁc permission
+and/or a fee. Request permissions from permissions@acm.org.
+IWOCL ’16, April 19 - 21, 2016, Vienna, Austria
+c⃝2016 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+ISBN 978-1-4503-4338-1/16/04...$15.00
+DOI: http://dx.doi.org/10.1145/2909437.2909440
+58%
+(29)
+36%
+(18)
+6%
+(3)
+% of papers that evaluate OpenCL 
+implementations from 
+1, 2, and 3 GPU vendors
+1
+2
+3
+39
+23
+8
+3
+1
+Number of papers that evaluate an 
+OpenCL GPU implementation from 
+each vendor
+Figure 1:
+The number of vendors whose OpenCL
+GPU implementations are evaluated in 50 recent pa-
+pers listed at http://hgpu.org
+As discussed in Sec. 3, we focus on GPU platforms in
+this study. Many GPU vendors provide implementations of
+OpenCL for their respective platforms.
+In principle, this
+means that programs adhering to the OpenCL speciﬁca-
+tion should be executable across these platforms. However,
+in our experiences many GPU applications (especially in
+the research literature) target platforms from a single ven-
+dor. To quantify this claim, we manually examined the 50
+most recent papers listed on the GPU aggregate website
+http://hgpu.org (retrieved 25 Jan. 2016) that feature evalu-
+ation of OpenCL applications on GPU platforms (we exclude
+papers that exclusively report results for CPUs and/or FP-
+GAs). Our ﬁndings are summarised in Fig. 1. The pie chart
+shows that over half (58%) of the papers evaluated GPUs
+from one vendor only.
+Only three papers (6%) evaluated
+chip
+vendor
+CUs
+type
+abbr.
+OCL
+GTX 980
+Nvidia
+16
+discrete
+980
+1.1
+Quadro K500
+Nvidia
+12
+discrete
+K5200
+1.1
+Iris 6100
+Intel
+47
+integrated
+6100
+2.0
+HD 5500
+Intel
+24
+integrated
+5500
+2.0
+Radeon R9
+AMD
+28
+discrete
+R9
+2.0
+Radeon R7
+AMD
+8
+integrated
+R7
+2.0
+Mali-T628
+ARM
+4
+integrated
+T628-4
+1.2
+Mali-T628
+ARM
+2
+integrated
+T628-2
+1.2
+Table 1: The GPUs we consider, spanning designs
+from four vendors
+benchmark
+app. name
+description
+GPU architecture
+source language
+Pannotia
+p-sssp
+single source shortest path
+AMD Radeon HD 7000
+OpenCL 1.0
+Pannotia
+p-mis
+maximal independent set
+AMD Radeon HD 7000
+OpenCL 1.0
+Pannotia
+p-colour
+graph colouring
+AMD Radeon HD 7000
+OpenCL 1.0
+Pannotia
+p-bc
+betweenness centrality
+AMD Radeon HD 7000
+OpenCL 1.0
+Lonestar
+ls-mst
+minimum spanning tree
+Nvidia Kepler and Fermi
+CUDA 7
+Lonestar
+ls-dmr
+delaunay mesh reﬁnement
+Nvidia Kepler and Fermi
+CUDA 7
+Lonestar
+ls-bfs
+breadth ﬁrst search
+Nvidia Kepler and Fermi
+CUDA 7
+Lonestar
+ls-sssp
+single source shortest path
+Nvidia Kepler and Fermi
+CUDA 7
+Table 2: The applications we consider
+on GPUs from three vendors, and no paper presented ex-
+periments from more than three vendors. The ﬁgure also
+shows a histogram counting the number of papers that con-
+ducted evaluation on a GPU from each vendor. Nvidia and
+AMD are by far the most popular, even though other ma-
+jor vendors (e.g. ARM, Imagination, Qualcomm) all provide
+OpenCL support for their GPUs. Our investigation suggests
+that insuﬃcient eﬀort has been put into assessing the guar-
+antees of portability that OpenCL aims to provide.
+In this paper, we discuss our experiences with porting and
+running several open source applications across eight GPUs
+spanning four vendors, detailed in Tab. 1. For each chip we
+give the full GPU name, vendor, number of compute units
+(CUs), specify whether the GPU is discrete or integrated,
+provide a short name that we use throughout the paper for
+brevity, and indicate which version of OpenCL the GPU sup-
+ports (OCL). As Tab. 1 shows, we consider GPUs of diﬀerent
+sizes (based on number of compute units), and consider both
+integrated and discrete chips. We also attempt to diversify
+the intra-vendor chips. For Nvidia the 980 and K5200 are
+from diﬀerent Nvidia architectures (Maxwell and Kepler, re-
+spectively). For Intel the 6100 is part of the higher end Iris
+product line, while the 5500 is part of the consumer HD se-
+ries. The applications we consider (which are summarised in
+Tab. 2) are taken from two benchmark suites, Pannotia [9]
+and Lonestar [8]. For each application we give the bench-
+mark suite it is associated with, a short description, the
+GPU architecture family the application was evaluated on,
+and the original source language of the application. We de-
+scribe the benchmark suites and our motivation for choosing
+these applications in more detail in Sec. 3.
+This report serves to assess the current state of portability
+for OpenCL applications across a range of GPUs, by detail-
+ing the issues that blocked portability of the applications
+we studied. In this work, we consider semantic portability
+rather than performance portability; that is, the issues we
+document deal with the functional behaviour of applications
+rather than runtime performance.
+Prior work has exam-
+ined and addressed the issue of performance portability for
+OpenCL programs on CPUs and GPUs (for example [25, 26,
+2]); however, we encountered these issues when simply at-
+tempting to run the applications across GPUs, without any
+attempt to optimise runtime per platform.
+We report on
+these semantic portability issues in detail, classifying them
+into three main categories:
+• Framework bugs, where a vendor-provided OpenCL
+implementation behaves incorrectly according to the
+OpenCL speciﬁcation.
+• Speciﬁcation limitations, where the OpenCL speci-
+ﬁcation is unclear an

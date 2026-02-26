@@ -1,0 +1,177 @@
+Slow and Steady:
+Measuring and Tuning Multicore Interference
+Dan Iorga
+Imperial College London, UK
+d..iorga17@imperial.ac.uk
+Tyler Sorensen
+UC Santa Cruz, USA
+Princeton University, USA
+tyler.sorensen@ucsc.edu
+John Wickerson
+Imperial College London, UK
+j.wickerson@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London, UK
+afd@imperial.ac.uk
+Abstract—Now ubiquitous, multicore processors provide repli-
+cated compute cores that allow independent programs to run
+in parallel. However, shared resources, such as last-level caches,
+can cause otherwise-independent programs to interfere with one
+another, leading to signiﬁcant and unpredictable effects on their
+execution time. Indeed, prior work has shown that specially
+crafted enemy programs can cause software systems of interest to
+experience orders-of-magnitude slowdowns when both are run in
+parallel on a multicore processor. This undermines the suitability
+of these processors for tasks that have real-time constraints.
+In this work, we explore the design and evaluation of tech-
+niques for empirically testing interference using enemy programs,
+with an eye towards reliability (how reproducible the interference
+results are) and portability (how interference testing can be
+effective across chips). We ﬁrst show that different methods
+of measurement yield signiﬁcantly different magnitudes of, and
+variation in, observed interference effects when applied to an
+enemy process that was shown to be particularly effective in
+prior work. We propose a method of measurement based on
+percentiles and conﬁdence intervals, and show that it provides
+both competitive and reproducible observations. The reliability of
+our measurements allows us to explore auto-tuning, where enemy
+programs are further specialised per architecture. We evaluate
+three different tuning approaches (random search, simulated
+annealing, and Bayesian optimisation) on ﬁve different multicore
+chips, spanning x86 and ARM architectures. To show that our
+tuned enemy programs generalise to applications, we evaluate
+the slowdowns caused by our approach on the AutoBench and
+CoreMark benchmark suites. Our method achieves a statistically
+larger slowdown compared to prior work in 35 out of 105
+benchmark/chip combinations, with a maximum difference of
+3.8×. We envision that empirical approaches, such as ours, will
+be valuable for ‘ﬁrst pass’ evaluations when investigating which
+multicore processors are suitable for real-time tasks.
+I. INTRODUCTION
+Multicore processors have become thoroughly mainstream,
+and are now routinely used even in safety-critical settings [31].
+Yet, in a real-time domain, the greatest asset and deﬁning
+feature of multicore architectures – that they allow work
+to be distributed among multiple processing cores working
+simultaneously – begets a signiﬁcant weakness: interference
+between cores.
+This interference arises from contention between cores for
+shared resources (e.g. caches, buses, and main memory), and
+it can have a signiﬁcant and unpredictable effect on the
+worst-case execution time (WCET) of programs [24]. This
+undermines the suitability of multicore processors in scenarios
+that involve real-time constraints.
+This paper is concerned with empirical techniques for
+estimating upper bounds on how much interference a program
+running on a multicore processor could be subjected to.
+Although empirical techniques cannot promise to identify the
+absolute worst case, they are nonetheless valuable for making
+rapid comparisons between candidate processors. The key idea
+is to design enemy programs that access shared resources in
+just the right way to maximise the contention with a program
+running on another core [24], [21], [12]. Prior work has
+designed several enemy programs, demonstrating substantial
+slowdowns on commercial off-the-shelf (COTS) processors of
+more than 300× [3].
+The ﬁrst contribution of this paper is a method for reliably
+estimating how much interference these enemy programs re-
+ally cause. We propose a two-pronged measurement strategy
+that directly mitigates against factors that can be controlled
+(e.g. frequency throttling and thread migration) and uses
+statistical methods to mitigate against factors that are more
+difﬁcult to control. We apply our measurement strategy to
+enemy programs proposed in prior work, and show that while
+there is no doubt that very large slowdowns are possible, it
+is difﬁcult to reproduce the same magnitudes of slowdown
+once the various potentially-confounding factors are taken into
+account.
+Thus, armed with a method for reliably measuring multicore
+interference, our second contribution is to investigate the
+extent to which auto-tuning techniques can be effective at gen-
+erating better enemy programs. To this end, we have designed
+and implemented an open source tool that automatically tunes
+the parameters of a set of ANSI-C enemy programs, aiming to
+maximise the interference they cause on shared resources. Our
+tool supports three different auto-tuning strategies – random
+search, simulated annealing and Bayesian optimisation – and
+we compare the effectiveness of each. We have applied our
+tool to create enemy programs for ﬁve different chips, listed
+in Table I.
+We evaluate our approach using benchmarks from the
+CoreMark [6] and AutoBench [2] real-time application suites.
+Our auto-tuning framework is able to create enemies that cause
+slowdowns up to 3.8× larger than the slowdowns caused by
+enemies studied in prior work that were hand-tuned by experts.
+More generally, our results show that auto-tuning for about
+10 hours can lead to statistically signiﬁcant improvements in
+TABLE I: Development boards used to evaluate our approach
+Name
+Short name
+SoC
+Arch
+Cores
+Raspberry Pi 3 B
+Pi3
+BCM2837
+Arm A53
+4
+DragonBoard 410c
+410c
+Adreno306
+Arm A53
+4
+Intel Joule
+570X
+570x
+Atom
+4
+Nano-PC T3
+T3
+S5P6818
+Arm A53
+8
+BananaPi M3
+M3
+A837
+A7
+8
+observed slowdowns for 35 out of the 105 benchmark/board
+combinations that we tried. We attribute the effectiveness
+of auto-tuning here to its ability to uncover parameters that
+exploit architectural features that are not immediately obvious
+and are thus unlikely to be discovered even by experts. A
+system developer can use these enemies with instrumentation
+and measurement tools (e.g. performance counters), to gain
+more insights into the system. An added beneﬁt of our
+methodology over expert-tuned enemies is that it is portable:
+it can be used to automatically tune effective enemies across
+multiple, distinct architectures. We emphasise that auto-tuning
+is only enabled once our reliable measurement methodology
+is in place. Without this, the slowdowns associated with dif-
+ferent enemy program conﬁgurations cannot be meaningfully
+compared.
+In summary, our main contributions are:
+• a set of principles for how enemy programs can be
+rigorously evaluated, with emphasis on reproducibility
+(Section II),
+• an auto-tuning framework that can automatically conﬁg-
+ure enemy programs to maximise interference without the
+need for expert knowledge (Section III), and
+• an experimental study instantiating our auto-tuning
+framework with our reliable measurement method and
+using it to tune enemy programs that have been proposed
+in prior work, obtaining enemies that can be up to
+3.8× more effective at provoking interference in real-time
+applications (Section IV).
+Our tool is open source and available online.1
+II. MEASURING INTERFERENCE RELIABLY
+We ﬁrst present our approach for measuring the interference
+caused by an enemy program in a reliable manner, which
+underpins our practical instantiation in Section IV of the auto-
+tuning approach that we present in Section III.
+As in prior work [24], [3], we are interested in evaluat-
+ing commodity hardware using a regular (i.e. non-real-time)
+operating system, as this is a realistic usage scenario for
+early evaluation of COTS processors. But unlike this prior
+work, which pays little-to-no explicit attention to measurement
+reliability (i.e. variance and uncontrolled interf

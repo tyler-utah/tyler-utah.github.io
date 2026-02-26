@@ -1,0 +1,161 @@
+LeftoverLocals: Listening to LLM Responses Through
+Leaked GPU Local Memory
+Tyler Sorensen
+Trail of Bits
+University of California, Santa Cruz
+Santa Cruz, California, USA
+Heidy Khlaaf
+Trail of Bits
+New York City, New York, USA
+Abstract
+This paper describes LeftoverLocals: a vulnerability that al-
+lows data recovery from GPU memory created by another
+process on Apple, Qualcomm, and AMD GPUs. Leftover-
+Locals impacts the security posture of GPU applications,
+with particular significance to LLMs and ML models that
+run on impacted GPUs. By recovering local memory – an
+optimized GPU memory region – we built a PoC where an at-
+tacker can listen into another user’s interactive LLM session
+(e.g., llama.cpp) across process or container boundaries.
+1
+Introduction
+This paper is essentially a direct port (by the authors) from the
+official Trail of bits blog post, which can be found here: https://
+blog.trailofbits.com/2024/01/16/leftoverlocals-listening-to-llm-
+responses-through-leaked-gpu-local-memory/. This document
+was created because an archived paper may be better suited
+for distribution and citation in some cases.
+Given the rise of ML applications, especially for privacy
+sensitive application domains, it is imperative to rigorously
+examine security properties throughout the ML stack. This
+includes the computational work horse of ML applications,
+the GPU. While NVIDIA GPUs currently appear to domi-
+nate the ML market, most other hardware vendors create
+their own GPUs, which are becoming more widely used
+for ML applications, especially for local computation. This
+work discusses a data leak vulnerability found on many of
+these GPUs, specifically, from AMD, Apple, Qualcomm and
+Imagination. This leak, dubbed LeftoverLocals, was disclosed
+earlier this year (CVE-2023-49691) and allows a co-resident
+process to read leftover data in an optimized GPU memory
+region called local memory.
+LeftoverLocals can leak approximately 5.5 MB per GPU
+invocation on an AMD Radeon RX 7900 XT which, when
+running a 7B model on llama.cpp, adds up to 181 MB for
+each LLM query. This is enough information to reconstruct
+the LLM response with high precision, an example is shown
+in Fig. 1. The vulnerability highlights that many parts of
+the ML development stack have unknown security risks and
+have not been rigorously reviewed by security experts.
+Trail of Bits worked with CERT Coordination Center on a
+large coordinated disclosure effort involving all major GPU
+1https://kb.cert.org/vuls/id/446598
+Figure 1. An example of an LLM response that an attacker
+was able to reconstruct utilizing LeftoverLocals. The victim
+terminal is on the left (black background), and the attacker
+terminal is on the right (white backgroun). We can see that
+the attacker is able to reconstruct the response with relatively
+high fidelity. We believe that the listener could be more
+finally tuned to be even more accurate. Details proof-of-
+concept attack application, along with the system, can be
+found in Sec. 5.
+vendors, including: NVIDIA, Apple, AMD, Arm, Intel, Qual-
+comm, and Imagination. As of writing (Feb. 1, 2024), the
+status of the impacted vendors, Apple, AMD, and Qualcomm
+are as follows:
+• Apple: Despite multiple efforts to establish contact
+through CERT/CC, we only received a response from
+Apple on January 13, 2024. We re-tested the vulner-
+ability on January 10 where it appears that some de-
+vices have been patched, i.e., Apple iPad Air 3rd G
+(A12). However, the issue still appears to be present
+on the Apple MacBook Air (M2). Furthermore, the
+recently released Apple iPhone 15 does not appear to
+be impacted as previous versions have been. Apple
+has confirmed that the A17 and M3 series processors
+contain fixes, but we have not been notified of the
+specific patches deployed across their devices.
+• AMD: We have confirmed with AMD that their de-
+vices remain impacted, although they continue to in-
+vestigate potential mitigation plans. Their statement
+on the issue can be read here2.
+• Qualcomm: We received notice that there is a patch
+to Qualcomm firmware v2.073 that addresses Leftover-
+Locals for some devices. However, there may still be
+2https://www.amd.com/en/resources/product-security/bulletin/amd-sb-
+6010.html
+3https://lore.kernel.org/linux-firmware/20240111114032.126035-1-
+quic_akhilpo@quicinc.com/
+arXiv:2401.16603v1  [cs.CR]  29 Jan 2024
+Tyler Sorensen and Heidy Khlaaf
+other devices impacted at this time. A Qualcomm rep-
+resentative has provided the following comment: “De-
+veloping technologies that endeavor to support robust
+security and privacy is a priority for Qualcomm Tech-
+nologies. We commend Dr. Tyler Sorensen and Dr.
+Heidy Khlaaf from the AI/ML Assurance group at
+Trail of Bits for using coordinated disclosure practices
+and are in the process of providing security updates
+to our customers. We encourage end users to apply
+security updates as they become available from their
+device makers.”
+• Imagination: Despite not observing LeftoverLocals
+ourselves across the Imagination GPUs that we tested
+(see Sec. 6), Google has confirmed that some Imagina-
+tion GPUs are indeed impacted. Imagination released
+a fix in their latest DDK release, 23.3, made available
+to customers in December 20234.
+A list of tested and impacted devices can be found in Sec. 6
+Other vendors have provided us the following details:
+• NVIDIA: confirmed that their devices are not cur-
+rently impacted. One reason for this could be that
+researchers have explored various memory leaks on
+NVIDIA GPUs previously, e.g., in [6], and thus, they
+are aware of these types of issues.
+• ARM: also confirmed that their devices are not cur-
+rently impacted.
+We did not hear a response from the remaining vendor,
+Intel, we however, we tested two GPUs from them and did
+not observe that they were impacted (see Sec. 6).
+2
+Exploit Brief
+GPUs were initially developed to accelerate graphics com-
+putations. In this domain, performance is critical, and pre-
+viously uncovered security issues have generally not had
+any significant consequences on applications. Historically,
+this entailed that GPU hardware and software stacks iterated
+rapidly, with frequent major architecture and programming
+model changes. This has led to complex system stacks and
+vague specifications. For example, while CPU ISAs have vol-
+umes of documentation, NVIDIA simply provides a few short
+tables5. This type of vague specification has led to alarming
+issues, both previously [1] and currently, as LeftoverLocals
+exemplifies.
+2.1
+Exploitation requirements
+This is a co-resident exploit, meaning that a threat actor’s
+avenue of attack could be implemented as another applica-
+tion, app, or user on a shared machine. The attacker only
+requires the ability to run GPU compute applications, e.g.,
+through OpenCL, Vulkan, or Metal. These frameworks are
+4https://www.imaginationtech.com/gpu-driver-vulnerabilities/
+5https://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#
+instruction-set-reference
+well-supported and typically do not require escalated privi-
+leges. Using these, the attacker can read data that the victim
+has left in the GPU local memory simply by writing a GPU
+kernel that dumps uninitialized local memory. These attack
+programs, as our code demonstrates, can be less than 10
+lines of code. Implementing these attacks is thus not difficult
+and is accessible to amateur programmers (at least in obtain-
+ing stolen data). We note that it appears that browser GPU
+frameworks (e.g., WebGPU) are not currently impacted, as
+they insert dynamic memory checks into GPU kernels.
+Unless the user inspects the application’s low-level GPU
+source-code, it is not possible for them to uncover if their
+application is utilizing GPU local memory; this matter is
+further complicated as the GPU code is often hidden deep in
+library calls, at low levels of deep software stacks (e.g., for
+ML). Overall, there are very limited ways to observe that an
+attacker is currently stealing data, or has stolen data. This
+attack hinges on th

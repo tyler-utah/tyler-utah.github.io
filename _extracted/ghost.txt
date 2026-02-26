@@ -1,0 +1,145 @@
+GhOST: a GPU Out-of-Order Scheduling Technique
+for Stall Reduction
+Ishita Chaturvedi1, Bhargav Reddy Godala1, Yucan Wu1, Ziyang Xu1,
+Konstantinos Iliakis2, Panagiotis-Eleftherios Eleftherakis2, Sotirios Xydis2, Dimitrios Soudris2,
+Tyler Sorensen3, Simone Campanoni4, Tor M. Aamodt5, David I. August1
+1Princeton University, USA, 2National Technical University of Athens, Greece, 3UC Santa Cruz, USA,
+4Northwestern University, USA, 5University of British Columbia, Canada
+Abstract—Graphics Processing Units (GPUs) use massive
+multi-threading coupled with static scheduling to hide instruction
+latencies. Despite this, memory instructions pose a challenge
+as their latencies vary throughout the application’s execution,
+leading to stalls. Out-of-order (OoO) execution has been shown
+to effectively mitigate these types of stalls. However, prior OoO
+proposals involve costly techniques such as reordering loads and
+stores, register renaming, or two-phase execution, amplifying
+implementation overhead and consequently creating a substantial
+barrier to adoption in GPUs. This paper introduces GhOST,
+a minimal yet effective OoO technique for GPUs. Without
+expensive components, GhOST can manifest a substantial portion
+of the instruction reorderings found in an idealized OoO GPU.
+GhOST leverages the decode stage’s existing pool of decoded
+instructions and the existing issue stage’s information about in-
+structions in the pipeline to select instructions for OoO execution
+with little additional hardware. A comprehensive evaluation of
+GhOST and the prior state-of-the-art OoO technique across a
+range of diverse GPU benchmarks yields two surprising insights:
+(1) Prior works utilized Nvidia’s intermediate representation
+PTX for evaluation; however, the optimized static instruction
+scheduling of the final binary form negates many purported
+improvements from OoO execution; and (2) The prior state-
+of-the-art OoO technique results in an average slowdown across
+this set of benchmarks. In contrast, GhOST achieves a 36%
+maximum and 6.9% geometric mean speedup on GPU binaries
+with only a 0.007% area increase, surpassing previous techniques
+without slowing down any of the measured benchmarks.
+Index Terms—GPU, Parallelism, out-of-order execution, GPU
+Microarchitecture, low overhead out-of-order execution
+I. INTRODUCTION
+Graphics Processing Units (GPUs) have significantly en-
+hanced the efficiency of computationally intensive applica-
+tions, including medical imaging [55], machine learning [30],
+and computer vision [48], achieving orders of magnitude im-
+provement. This efficiency is attributed to the GPUs’ capability
+to (1) support a massively parallel programming model and (2)
+reduce latency through concurrency, allowing rapid switching
+between concurrent warps. Some Nvidia devices, for instance,
+can handle up to 64 warps per core [41], [61], [62].
+Despite these capabilities, many GPU applications still
+encounter significant stall cycles [2], [31], during which none
+of the warps can issue instructions due to data, control, or
+structural hazards. Many techniques to address GPU stall
+cycles focus on thread-level parallelism. Previous techniques
+0
+10
+20
+30
+40
+% Instuctions issued OoO
+Idealized OoO
+Efficient OoO
+(GhOST)
+Fig. 1.
+Percentage of reordered instructions with idealized OoO execution
+(perfect branch prediction, register renaming and load-store queues) and
+efficient OoO execution which elides these techniques.
+have typically focused on two approaches: The first involves
+increasing the number of warps to improve the probability
+of finding a non-stalled warp. However, prior work has shown
+that doing so may result in worse performance due to increased
+resource contention [25], [34], [53]. The second approach
+has been to re-prioritize warps to enhance TLP and/or cache
+locality [12], [23], [33], [40], [53], [63]. However, all tech-
+niques focusing on TLP are limited, in part, because they only
+consider the next in-order instruction per warp. Consequently,
+the GPU core will stall when the oldest instructions for all
+warps encounter stalls.
+Recent efforts have employed out-of-order (OoO) execu-
+tion, a technique successfully applied to CPUs, to enhance
+instruction-level parallelism on GPUs [16], [19], [20], [28],
+[66]. While OoO GPU approaches show promising initial
+results, they still suffer from inefficiencies, including re-
+issuing instructions, saving state resources such as registers
+or memory for more complicated warp switches, and making
+ISA modifications. Like GhOST, SOCGPU [19] is an inex-
+pensive OoO mechanism for GPUs. Developed coincidentally,
+it further validates this paper’s goals. While SOCGPU is
+implemented mostly in the front-end like GhOST, it has the
+constraint that an instruction cannot be removed from the
+instruction buffer until it is written back. This has the potential
+to fill the instruction buffer and create a type of stall not found
+in GhOST. This could explain why SOCGPU experiences
+slowdowns while GhOST does not. Thus, another important
+contribution of this paper is in demonstrating that a write-back
+constraint is unnecessary and should be avoided. LOOG [20] is
+the prior state-of-the-art that enables complete OoO execution
+for GPUs. However, LOOG requires expensive features like
+load-store queues for reordering memory instructions, result
+broadcasting, and register renaming.
+1
+While previous approaches aim to enable CPU-style out-of-
+order (OoO) mechanisms on GPUs, GPU applications exhibit
+markedly different characteristics (see Section II). Historically,
+the first dynamically scheduled processor, the CDC6600 [60],
+enabled OoO execution without renaming or speculation back
+when resources were far more constrained than today. We
+see merit in revisiting such simpler, yet not fully-featured,
+designs in the context of today’s throughput architectures
+where efficiency is paramount.
+We observed that having instructions from independent
+warps in the instruction buffer (IB) provides a high level of
+flexibility, leading to significant out-of-order (OoO) perfor-
+mance without the need for register renaming, bookkeeping, or
+speculation. Figure 1 demonstrates that GPUs offer significant
+reordering opportunities to hide stalled instructions without
+requiring speculation, register renaming, and reordering of
+load and store instructions. These results were obtained across
+a comprehensive benchmark suite (see Section V) and mea-
+suring how many instructions could be reordered in an fully
+featured OoO configuration as well as our simpler, and more
+efficient, implementation (GhOST).
+Building on this insight, this paper introduces GhOST: a
+low-overhead, hardware-only OoO technique for GPUs de-
+signed to leverage the unique characteristics of GPU architec-
+ture to achieve minimal hardware overhead. GhOST is the first
+work that utilizes the issue buffer as a large pool of instruc-
+tions, thereby increasing the probability for GhOST to find a
+ready instruction without the need for the expensive techniques
+required by prior work. GhOST splits the instruction scheduler
+between the GhOST scheduler and the warp scheduler, leaving
+the complexity of the warp scheduler unmodified. This results
+in a simple and effective non-speculative OoO engine, which
+resides almost entirely in the decode stage.
+GhOST outperforms LOOG [20], the prior state-of-the-
+art OoO technique while using significantly less area and
+power. GhOST achieves a maximum speedup of up to 37%,
+with a geometric mean speedup of 6.9% across 28 applica-
+tions, demonstrating notable performance improvement in low-
+occupancy applications. GhOST does not cause performance
+degradation in any evaluated workload. Furthermore, GhOST
+has an extremely efficient implementation, requiring only an
+area increase of 0.007% and a 1.1707 mW increase in power.
+While GhOST is a hardware-only technique, we show that
+compiler techniques like loop unrolling and software renaming
+work well with GhOST, bringing the OoO performance closer
+to idealized 

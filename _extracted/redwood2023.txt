@@ -1,0 +1,189 @@
+Redwood: Flexible and Portable Heterogeneous
+Tree Traversal Workloads
+Yanwen Xu
+University of California, Santa Cruz
+yxu83@ucsc.edu
+Ang Li
+Princeton University
+angl@princeton.edu
+Tyler Sorensen
+University of California, Santa Cruz
+tysorens@ucsc.edu
+Abstract—Shared memory heterogeneous systems are now
+mainstream, with nearly every mobile phone and tablet contain-
+ing integrated processing units. However, developing applications
+for such devices is difficult as workloads must be decomposed
+across different processing units, and the decomposition must
+be flexible to account for the growing diversity of devices, each
+with different relative processing unit throughput. Furthermore,
+many devices require distinct programming front ends, requiring
+significant effort to write cross-platform applications.
+In this work, we identify a pragmatic class of applications,
+which we call traverse-compute applications, that are ideal for
+shared memory heterogeneous systems. These applications have
+a flexible heterogeneous decomposition where CPUs excel at
+traversing a tree structure, while accelerators excel at node
+computations. Leveraging this insight, we present Redwood: a
+framework for writing heterogeneous traverse-compute work-
+loads. Redwood provides a simple processing unit abstraction
+and a tree traversal library that enables heterogeneous opti-
+mizations. Using Redwood, we implement Grove, a benchmark
+suite containing nine pragmatic tree traversal applications, e.g.,
+k-nearest neighbors. We instantiate Redwood for three different
+heterogeneous programming platforms: CUDA, SYCL, and High-
+Level Synthesis; we use Grove to evaluate five shared memory
+heterogeneous systems. Our evaluation highlights the impor-
+tance of flexible heterogeneous decomposition as the optimal
+parameters differ widely across platforms and applications.
+However, once optimally configured, heterogeneous implemen-
+tations can provide up to 13.53× speedups (geomean of 3.01×)
+over homogeneous implementations, showcasing the potential of
+heterogeneous computing for these workloads.
+Index Terms—Heterogeneous Computing, Benchmarks, FP-
+GAs, GPUs, Tree Traversals
+I. INTRODUCTION
+As Moore’s Law and Dennard’s scaling come to an end, the
+demand for ever-increasing performance and energy efficiency
+has driven the development of Shared-Memory Heterogeneous
+Systems (SMHSs), particularly in mobile System-on-Chips
+(SoCs), e.g., an Apple A12 SoC has over 80% of the die
+area consisting of accelerators [45]. SMHSs incorporate di-
+verse specialized processing units (PUs), including traditional
+CPUs and Programmable Accelerating PUs (PAPUs), such
+as integrated GPUs and embedded FPGAs, all interconnected
+through a shared-memory hierarchy on the same chip. In
+contrast to conventional accelerator-oriented heterogeneous
+systems (e.g., [23], [41]), SMHSs architecture enables efficient
+communication and data sharing between different PUs, com-
+pared to discrete heterogeneous systems where data is typically
+transferred via PCIe, as studied in [12], [19], [33].
+In recent years, there has been a growing trend in academia
+to explore SMHSs, as shown by the increasing number of
+studies focusing on the integration of accelerators and their
+interactions with a shared memory hierarchy in SoC de-
+signs [22], [27]. Moreover, in [13], [30], [60], these studies
+have shown that shared memory is a key factor in improving
+Heterogeneous SoCs’ performance and energy efficiency.
+Apart from academic explorations, there are many deployed
+SMHSs, largely on mobile devices, such as phones and tablets.
+Many different vendors produce these devices, e.g. Apple,
+Qualcomm, and ARM, each of which contains vendor-specific
+PAPU architectures. This diversity necessitates the need for
+benchmarks to evaluate and compare the efficiency of these
+SMHSs. However, SMHSs remain difficult to target with
+workloads that can efficiently utilize their different PUs.
+In this work, we identify a pragmatic class of workloads,
+which we call traverse-compute, that are ideal for SMHSs.
+These workloads aim to harness the capabilities of various PUs
+in SMHSs effectively, enabling comprehensive performance
+evaluation and comparison across different SoC designs.
+A. Heterogeneous Traverse-Compute Workloads
+Trees are a fundamental data structure and form the foun-
+dation for many useful workloads [18]. A tree traversal is
+characterized by irregular memory accesses, as nodes can be
+scattered across the memory. Many tree-based workloads com-
+bine tree traversal with some computation, largely occurring
+when leaf nodes are visited. We call such workloads traverse-
+compute workloads, which can often be found in statistical
+learning [14], and particle simulations [5].
+Traverse-compute workloads utilize spatial partitioning trees
+like k-d trees [3], allowing a point cloud to be efficiently
+searched in O(log(n)) instead of O(n). An example of
+traverse-compute workload is
+nearest-neighbor (NN); its
+applications include facial recognition on surveillance cam-
+eras [39], object detection in robotics [35], and anomaly
+detection in portable monitoring systems [50]. These tree-
+based approaches offer an attractive energy-compute trade-off,
+making them a suitable alternative to DNN-based approaches
+for resource-constrained devices [40], [57], where SMHSs are
+often employed.
+These workloads have been well-studied and can be found in
+other benchmarks: e.g., Splash3 [43] and [6] includes Barnes-
+Hut algorithms; Hetero-Mark [51] includes k nearst-neighbor.
+M
+M
+M
+M
+M
+M
+M
+…
+…
+…
+…
+…
+M
+Data Movements Cost 
+(Host ↔Device)
+M
+M
+M
+M
+Tasks 
+Components of task that best 
+suited to CPU
+Components of task that best 
+suited to PAPU
+CPU
+PAPU
+CPU
+PAPU
+CPU
+PAPU
+CPU
+PAPU
+CPU
+PAPU
+(a) Accelerator-
+oriented
+(b) Flexible Task 
+Scheduling
+(c) Specialized 
+Decomposition
+(e) Flexible & 
+Specialized
+on SMHS    
+(d) Flexible &  
+Specialized
+Execution Timeline
+(unutilized PAPU)
+(unutilized CPU)
+(inefficient use of PUs)
+=
+Fig. 1.
+(a-d) Execution timelines for different heterogeneous workload
+paradigms. Blue/Green shading represents tasks, decomposed from the orig-
+inal algorithm (Grey), that are best suited to CPU/PAPU, respectively.
+Redwood combines flexible task scheduling, specialized decomposition, and
+efficient communication between PUs, as illustrated in (e).
+However, the traverse-compute abstraction boundary has not
+been exploited in the way that we are proposing.
+B. Heterogeneous Computing Paradigms
+While there are many works on heterogeneous computing,
+e.g., see [33], we believe that several factors make this work-
+load, along with our corresponding programming framework
+and benchmark suite, unique. We start by discussing four
+common heterogeneous computing paradigms, illustrated in
+Figure 1, and show how traverse-compute workloads have a
+flexible and specialized mapping to SMHSs.
+a) Accelerator-oriented: In many discrete, accelerator-
+oriented systems, the trend is to offload most computation
+to the accelerator, as shown in Fig. 1-a. This approach can
+result in an underutilized CPU, especially in a SMHS, where
+different PUs share a more or equal portion of the system
+resources, e.g., as is the case on many smartphone SoCs [45].
+Thus, to utilize the entire system, tasks should be decomposed
+so that the workload is distributed across PUs.
+b) Flexible Task Scheduling: Other frameworks have task
+schedulers that assign similar tasks across both the CPU and
+GPU, such as work stealing in [10]; this is shown in Fig. 1-
+b, where both PUs are occupied. Furthermore, due to task
+granularity and dynamic task management, these heteroge-
+neous frameworks can adapt to different PAPU throughputs.
+Using Nvidia’s SMHS Jetson chips as an example, the Xavier
+reports 1.7 GPU TFLOPs, while the Orin reports 5.3 GPU
+TFLOPs [38]. Given these differences, a portable heteroge-
+neous workload requires a flexible decomposition, i.e., so that
+the workload executing on the Orin can be configured to have
+more work mapped to the GPU and t

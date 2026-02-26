@@ -1,0 +1,144 @@
+A Simulator and Compiler Framework for Agile
+Hardware-Software Co-design Evaluation and Exploration
+Invited Talk
+Tyler Sorensen
+UC Santa Cruz
+Aninda Manocha
+Princeton University
+Esin Tureci
+Princeton University
+Marcelo Orenes-Vera
+Princeton University
+Juan L. Aragón
+Universidad de Murcia
+Margaret Martonosi
+Princeton University
+ABSTRACT
+As Moore’s Law has slowed and Dennard Scaling has ended, ar-
+chitects are increasingly turning to heterogeneous parallelism and
+hardware-software co-design. These trends present new challenges
+for simulation-based performance assessments that are central
+to early-stage architectural exploration. Simulators must be light-
+weight to support heterogeneous combinations of general-purpose
+cores and specialized processing units. They must also support
+agile exploration of hardware-software co-design, i.e. changes in
+the programming model, compiler, ISA, and specialized hardware.
+To meet these challenges, we describe our compiler and simulator
+pair: DEC++ and MosaicSim. Together, they provide a lightweight,
+modular simulator for heterogeneous systems, offering accuracy
+and agility designed specifically for hardware-software co-design
+explorations. The simulator and corresponding compiler were de-
+veloped as part of the DECADES project, a multi-team effort to
+design and tape out a new heterogeneous architecture. We will
+present two case-studies in important data-science applications
+where DEC++ and MosaicSim enable straightforward design space
+explorations for emerging full-stack systems.
+CCS CONCEPTS
+• Computing methodologies →Modeling and simulation; •
+Software and its engineering →Compilers.
+KEYWORDS
+performance modeling, heterogeneous systems, hardware-software
+co-design. LLVM simulation
+ACM Reference Format:
+Tyler Sorensen, Aninda Manocha, Esin Tureci, Marcelo Orenes-Vera, Juan
+L. Aragón, and Margaret Martonosi. 2020. A Simulator and Compiler Frame-
+work for Agile Hardware-Software Co-design Evaluation and Exploration:
+Invited Talk. In IEEE/ACM International Conference on Computer-Aided De-
+sign (ICCAD ’20), November 2–5, 2020, Virtual Event, USA. ACM, New York,
+NY, USA, 9 pages. https://doi.org/10.1145/3400302.3415751
+Permission to make digital or hard copies of part or all of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for third-party components of this work must be honored.
+For all other uses, contact the owner/author(s).
+ICCAD ’20, November 2–5, 2020, Virtual Event, USA
+© 2020 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-8026-3/20/11.
+https://doi.org/10.1145/3400302.3415751
+1
+INTRODUCTION
+At this point, technologists have all seen the obituaries for Moore’s
+Law and Dennard Scaling. Powerful eulogies, in the form of flat-
+tening scaling graphs (e.g. see [26]), have been widely shown at
+various conferences and events. This death was inevitable as our
+communities pushed transistor technologies to their fundamental
+limits: transistors now are at the point where they can no longer
+get smaller and faster. These trends will be dearly missed, as they
+helped describe romantic pop science facts, e.g. a 2019 smart phone
+has roughly 100, 000× as much processing power as the computer
+on the Apollo 11 spacecraft that first landed on the moon [14].
+When these transistor scaling trends existed, computer architects
+and programming language (PL) designers could focus on improv-
+ing the design (and the programmability) of general-purpose com-
+putational units (e.g. CPUs). As transistor technology improved, it
+created opportunities for CPU performance improvement through
+these designs. However, with the death of transistor scaling trends,
+room for improvement by architects and PL researchers now lies
+in specialization, i.e. because transistors are not getting faster, we
+must think about how they can be used more efficiently. To achieve
+this, problem domains are distilled into abstract building blocks, for
+which specialized architectures (and PLs) can be designed. Modern
+architectures, or Systems On a Chip (SoCs), are mosaics of special-
+ized processing units. A microscopic view shows small, specialized
+processing units patched together while a macroscopic view gives
+the illusion of a unified system performing one complex task, e.g.
+taking a picture on a smart phone. Die photo analysis has shown
+that over half the area of modern smartphone SoCs comprises pro-
+cessing elements that are neither CPUs nor GPUs [28].
+Designing the architecture of a heterogeneous system is extremely
+difficult. Individual processing units, e.g. ASIC accelerators, semi-
+programmable accelerators, data supply components, and general-
+purpose processors, now have mature tooling for design. Thus,
+a heterogeneous system design has a buffet of processing units
+and data supply techniques to choose from; ideally, it employs a
+combination such that the system is optimally efficient across its
+problem domains, while also respecting resource constraints. De-
+signing the programming language for a heterogeneous system is
+also extremely challenging. Legacy software should run efficiently
+with minimal (preferably no) modifications. Users should be able
+to target the system with familiar languages (e.g. Python and C++).
+Finally, the system should provide enough flexibility (or reconfig-
+urability) to adapt to the latest algorithm, model, or input data.
+ICCAD ’20, November 2–5, 2020, Virtual Event, USA
+Sorensen and Manocha, et al.
+This architectural design space explosion, coupled with ambi-
+tious PL goals, necessitates new simulator and compiler tooling for
+the research community. Such tooling should support an agile archi-
+tecture design, such that different heterogeneous components can
+be easily swapped and evaluated. Likewise, the programming model
+should be agile, such that new code transformations (both automatic
+and manual) can be rapidly implemented and evaluated. Most im-
+portantly, the simulator and compiler should have a straightforward
+interface for each other, such that hardware-software co-designs
+can be developed in an agile way.
+Many widely used simulators (e.g. Sniper [8], ZSim [27], gem5 [7])
+are designed to simulate homogeneous ISA systems; this design
+choice has several significant drawbacks when modeling heteroge-
+neous systems: (1) Accelerator integration is not straightforward
+as only a limited set of ASIC designs are currently supported; (2)
+PL innovations are implemented in an ad-hoc manner, for example,
+by invasive modifications in LLVM, and (3) Individual computation
+components can have completely different ISAs, e.g. [5].
+At the same time, the PL community has largely rallied behind
+the LLVM compiler framework [17]. There is mature support for
+various frontends, including C/C++ through Clang [1], Python
+through Numba [16], and many others [33]. A program written
+in a supported frontend is first compiled to LLVM IR bytecode.
+The compiler can then apply transformations, including custom
+optimizations written for a hardware-software co-design. After
+these transformations, the LLVM backend can produce binaries for
+a variety of microarchitectures, including X86, ARM, and RISC-V.
+Thus, this framework enables software to flexibly target heteroge-
+neous hardware and should be leveraged by a lightweight, modular
+simulation infrastructure.
+1.1
+DEC++ and MosaicSim: a New Compiler
+and Simulator Infrastructure
+This paper describes DEC++ and MosaicSim: a compiler and simu-
+lator infrastructure to support agile development of heterogeneous
+architectures and corresponding programming models. Together,
+they facilitate early-stage evaluations of hardware-software co-
+designs by providing interchangeable heterogeneous architecture
+component models and a robust compiler framework. Our compiler,
+DEC++, leverages the mature LLVM infrastructure. Our innova-
+tions are large

@@ -1,0 +1,284 @@
+C
+o
+n
+s
+i
+s
+t
+e
+n
+t
+*
+C
+o
+m
+p
+l
+e
+t
+e
+*
+W
+e
+l
+l
+D
+o
+c
+u
+m
+e
+n
+t
+e
+d
+*
+E
+a
+s
+y
+t
+o
+R
+e
+u
+s
+e
+*
+*
+E
+v
+a
+l
+u
+a
+t
+e
+d
+*
+O
+O
+P
+S
+L
+A
+*
+A
+r
+t
+i
+f
+a
+c
+t
+*
+A
+E
+C
+Portable Inter-workgroup Barrier Synchronisation for GPUs
+Tyler Sorensen
+Imperial College London, UK
+t.sorensen15@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London, UK
+alastair.donaldson@imperial.ac.uk
+Mark Batty
+University of Kent, UK
+m.j.batty@kent.ac.uk
+Ganesh Gopalakrishnan
+University of Utah, USA
+ganesh@cs.utah.edu
+Zvonimir Rakamari´c
+University of Utah, USA
+zvonimir@cs.utah.edu
+Abstract
+Despite the growing popularity of GPGPU programming,
+there is not yet a portable and formally-speciﬁed barrier
+that one can use to synchronise across workgroups. More-
+over, the occupancy-bound execution model of GPUs breaks
+assumptions inherent in traditional software execution bar-
+riers, exposing them to deadlock. We present an occupancy
+discovery protocol that dynamically discovers a safe esti-
+mate of the occupancy for a given GPU and kernel, allow-
+ing for a starvation-free (and hence, deadlock-free) inter-
+workgroup barrier by restricting the number of workgroups
+according to this estimate. We implement this idea by
+adapting an existing, previously non-portable, GPU inter-
+workgroup barrier to use OpenCL 2.0 atomic operations,
+and prove that the barrier meets its natural speciﬁcation in
+terms of synchronisation.
+We assess the portability of our approach over eight
+GPUs spanning four vendors, comparing the performance
+of our method against alternative methods. Our key ﬁnd-
+ings include: (1) the recall of our discovery protocol is
+nearly 100%; (2) runtime comparisons vary substantially
+across GPUs and applications; and (3) our method provides
+portable and safe inter-workgroup synchronisation across
+the applications we study.
+Categories and Subject Descriptors D.1.3 [Programming
+Techniques]: Concurrent Programming
+Keywords
+GPU, OpenCL, barrier, synchronisation, porta-
+bility
+1
+kernel unsafe(global int *flag, int A, int B) {
+2
+if (get_group_id(0) == A)
+3
+while(*flag != 1);
+4
+5
+if (get_group_id(0) == B)
+6
+*flag = 1;
+7
+}
+Figure 1: A non-portable kernel that potentially deadlocks
+1.
+Introduction
+With the growing use of GPUs in dynamic parallel appli-
+cations, methods that fully exploit existing GPU hardware
+in the face of varying amounts of available parallelism have
+become crucially important. Typical large-scale applications
+in this area—graph analysis [7], particle partitioning [6], and
+software rendering pipelines [30]—share their computation
+across multiple workgroups (i.e. groups of threads, called
+blocks in CUDA [23]).
+Execution barrier synchronisation, where a thread waits
+at a barrier until all threads reach the barrier, is a popu-
+lar method for inter-thread communication because (1) it
+efﬁciently and simultaneously aligns the computations of
+threads, and (2) it makes pre-barrier memory updates avail-
+able to all threads, implementing a well-speciﬁed and simple
+memory consistency model.
+Unfortunately, existing GPUs and their associated pro-
+gramming languages do not support inter-workgroup bar-
+riers. This is because a GPU program (known as a kernel)
+can be conﬁgured with many more workgroups than the un-
+derlying hardware can execute concurrently. Execution of
+large numbers of workgroups is achieved in any “occupancy-
+bound” fashion, by delaying the scheduling of some work-
+groups until others have executed to completion. As a con-
+sequence, traditional fair scheduling guarantees associated
+with CPU threads are not provided between workgroups ex-
+ecuting a kernel [11].
+As an example, consider the kernel in Figure 1. This ker-
+nel accepts a pointer to a global variable, flag (initialised to
+0), and two integers, A and B. The workgroup with id B (ob-
+tained through the OpenCL primitive get group id(0))
+writes 1 to flag, while the workgroup with id A spins
+waiting for workgroup B to write to flag. However, the
+GPU execution model is licensed to postpone execution of
+workgroup B until execution of workgroup A has completed,
+which will lead the kernel to deadlock due to starvation.
+This idiom of one workgroup waiting on another is at the
+heart of an inter-workgroup barrier. When executing a bar-
+rier instance, each workgroup will wait on all other work-
+groups to reach the same barrier instance. If a single work-
+group is blocked by the occupancy-bound execution model,
+then the barrier execution will deadlock due to starvation.
+This behaviour is easy to observe on current GPUs, e.g. a
+traditional CPU software barrier [12, ch. 17], ported to syn-
+chronise across workgroups in OpenCL, leads to deadlock
+on an AMD Radeon R7 GPU when used in a GPU kernel
+conﬁgured with more than 4096 threads (with 256 threads
+per workgroup), as this exceeds the occupancy of the GPU
+for a kernel realisation, i.e. the number of workgroups that
+can execute the binary version of the kernel concurrently on
+the GPU. We abbreviate this concept as occupancy of the
+GPU for the remainder of this paper.
+Current approaches
+Existing GPU applications that re-
+quire inter-workgroup barrier synchronisation rely on either
+the multi-kernel or the occupancy assumption method.
+In the multi-kernel method, an application is manually
+split into multiple kernels, with a transition from one kernel
+to another each time an inter-workgroup barrier is required.
+The transfer of control from the GPU to the CPU host be-
+tween kernels provides the barrier semantics implicitly. This
+method is portable, making no assumptions about concurrent
+execution of workgroups. A drawback is that interaction be-
+tween the GPU and CPU can be expensive, due to the over-
+head associated with kernel launch and because the contents
+of registers and local memory (shared memory in CUDA) do
+not persist across kernel calls, and thus cannot be reused.
+The alternative occupancy assumption approach (studied
+in related work [11, 32]), employs a traditional software
+execution barrier. Starvation (and hence deadlock) is avoided
+through a priori knowledge about the number of workgroups
+that can be scheduled concurrently for a particular kernel and
+GPU. This avoids the efﬁciency problems of the multi-kernel
+approach, but is non-portable, since workgroup occupancy
+varies dramatically between GPUs depending on hardware
+resources (e.g. the number of compute units), and on a per-
+kernel basis according to the resources (such as registers
+and local memory) that a workgroup requires to execute
+the kernel. These resources are in part determined by the
+compiler and thus may vary between compiler versions.
+In a related vein, OpenCL also provides nested paral-
+lelism [17, pp. 32–33] (or dynamic parallelism in CUDA [23,
+chip
+vendor
+#CUs
+type
+short name
+GTX 980
+Nvidia
+16
+discrete
+980
+Quadro K5200
+Nvidia
+12
+discrete
+K5200
+Iris 6100
+Intel
+47
+integrated
+6100
+HD 5500
+Intel
+24
+integrated
+5500
+Radeon R9
+AMD
+28
+discrete
+R9
+Radeon R7
+AMD
+8
+integrated
+R7
+Mali-T628
+ARM
+4
+integrated
+T628-4
+Mali-T628
+ARM
+2
+integrated
+T628-2
+Table 1: The GPUs we used for empirical evaluation
+app. C]) where GPU threads can themselves launch a new
+kernel and then wait until the new kernel is ﬁnished. While
+this feature may be useful for applications examined in this
+work (e.g. applications with irregular parallelism), the high
+level idiom of nested parallelism (i.e. fork-and-join) is dif-
+ferent enough from barrier synchronisation (i.e. synchronise
+existing threads) that we do not consider it in this paper.
+Memory consistency
+An inter-workgroup barrier must
+also provide memory ordering properties: threads must ob-
+serve up-to-date memory values during post barrier execu-
+tion, and data-races between accesses separated by the bar-
+rier must be forbidden. The barrier must be implemented
+using sufﬁcient synchronisation constructs, such as atomic
+operations and memory fences, to ensure these properties.
+Our contributions
+Our overall contribution is to show
+that portable inter-workgroup barrier synchronisation can be
+success

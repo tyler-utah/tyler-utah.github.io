@@ -1,0 +1,129 @@
+GPU schedulers: how fair is fair enough?
+Tyler Sorensen
+Imperial College London, UK
+t.sorensen15@imperial.ac.uk
+Hugues Evrard
+Imperial College London, UK
+h.evrard@imperial.ac.uk
+Alastair F. Donaldson
+Imperial College London, UK
+alastair.donaldson@imperial.ac.uk
+Abstract
+Blocking synchronisation idioms, e.g. mutexes and barriers, play an important role in concurrent
+programming. However, systems with semi-fair schedulers, e.g. graphics processing units (GPUs),
+are becoming increasingly common. Such schedulers provide varying degrees of fairness, guar-
+anteeing enough to allow some, but not all, blocking idioms. While a number of applications
+that use blocking idioms do run on today’s GPUs, reasoning about liveness properties of such
+applications is diﬃcult as documentation is scarce and scattered.
+In this work, we aim to clarify fairness properties of semi-fair schedulers. To do this, we
+deﬁne a general temporal logic formula, based on weak fairness, parameterised by a predicate that
+enables fairness per-thread at certain points of an execution. We then deﬁne fairness properties
+for three GPU schedulers: HSA, OpenCL, and occupancy-bound execution. We examine existing
+GPU applications and show that none of the above schedulers are strong enough to provide the
+fairness properties required by these applications. It hence appears that existing GPU scheduler
+descriptions do not entirely capture the fairness properties that are provided on current GPUs.
+Thus, we present two new schedulers that aim to support existing GPU applications. We analyse
+the behaviour of common blocking idioms under each scheduler and show that one of our new
+schedulers allows a more natural implementation of a GPU protocol.
+2012 ACM Subject Classiﬁcation Software and its engineering →Semantics, Software and its
+engineering →Scheduling, Computing methodologies →Graphics processors
+Keywords and phrases GPU scheduling, Blocking synchronisation, GPU semantics
+Digital Object Identiﬁer 10.4230/LIPIcs.CONCUR.2018.23
+1
+Introduction
+The scheduler of a concurrent system is responsible for the placement of virtual threads
+onto hardware resources. There are often insuﬃcient resources for all threads to execute in
+parallel, and it is the job of the scheduler to dictate resource sharing, potentially inﬂuencing
+the temporal semantics of concurrent programs.
+For example, consider a two threaded
+program where thread 0 waits for thread 1 to set a ﬂag. If the scheduler never allows thread
+1 to execute then the program will hang due to starvation. Thus, to reason about liveness
+properties, developers must understand the fairness guarantees provided by the scheduler.
+GPUs are highly parallel co-processors found in many devices, from mobile phones to
+super computers. While these devices initially accelerated graphics computations, the last
+ten years have seen a strong push towards supporting general purpose computation on GPUs.
+© Tyler Sorensen, Hugues Evrard, and Alastair F. Donaldson;
+licensed under Creative Commons License CC-BY
+29th International Conference on Concurrency Theory (CONCUR 2018).
+Editors: Sven Schewe and Lijun Zhang; Article No. 23; pp. 23:1–23:17
+Leibniz International Proceedings in Informatics
+Schloss Dagstuhl – Leibniz-Zentrum für Informatik, Dagstuhl Publishing, Germany
+23:2
+GPU schedulers: how fair is fair enough?
+Today, through programming models such as OpenCL [11], CUDA [15], and HSA [8] we have
+mature frameworks to execute C-like programs on GPUs.
+Current GPU programming models oﬀer a compelling case study for schedulers for three
+reasons: (1) some blocking idioms, e.g. barriers, are known to hang due to starvation on
+current GPUs [20]; (2) other blocking idioms, e.g. mutexes, run without starvation on current
+GPUs; yet (3) documentation for some GPU programming models explicitly states that no
+guarantees are provided, while others state only minimal guarantees that are insuﬃcient
+to ensure starvation-freedom even for mutexes. Because GPU schedulers are embedded in
+closed proprietary frameworks, we do not look at concrete scheduling logic, but instead aim
+to derive formal fairness guarantees from prose documentation and observed behaviours.
+GPUs have a hierarchical programming model: in OpenCL threads are partitioned into
+workgroups. Threads in the same workgroup can synchronise via intrinsic instructions (e.g.
+the OpenCL barrier instruction [10, p. 99]). Yet, despite practical use cases (see Section 4),
+there are no such intrinsics for inter-workgroup synchronisation. Instead, inter-workgroup
+synchronisation is achieved by building constructs, e.g. mutexes, using ﬁner-grained prim-
+itives, e.g. atomic read-modify-write instructions (RMWs). However, reasoning about such
+constructs is diﬃcult as inter-workgroup thread interactions are relatively unstudied, espe-
+cially in relation to fairness. Given this, we focus only on inter-workgroup interactions and
+threads will be assumed to be in disjoint workgroups. Under this constraint, it is cumber-
+some to use the word workgroup. Because we can think of a workgroup as being a “composite
+thread”, we henceforth use the word thread to mean workgroup.
+The unfair OpenCL scheduler and non-blocking programs
+OpenCL is a programming
+model for parallel systems with wide support for GPUs.
+Due to scheduling concerns,
+OpenCL disallows all blocking synchronisation, stating [11, p. 29]: “A conforming imple-
+mentation may choose to serialize the [threads] so a correct algorithm cannot assume that
+[threads] will execute in parallel. There is no safe and portable way to synchronize across the
+independent execution of [threads] . . . .” Such weak guarantees are acceptable for many GPU
+programs, e.g. matrix multiplication, as they are non-blocking. That is, these programs will
+terminate under an unfair scheduler, i.e. a scheduler that provides no fairness guarantees.
+Blocking idioms and fair schedulers
+On the other hand, there are many useful block-
+ing synchronisation idioms, which require fairness properties from the scheduler to ensure
+starvation-freedom. Three common examples of blocking idioms considered throughout this
+work, barrier, mutex and producer-consumer (PC), are described in Table 1. Intuitively, a
+fair scheduler provides the guarantee that any thread that is able to execute will eventually
+execute. Fair schedulers are able to guarantee starvation-freedom for the idioms of Table 1.
+1.1
+Semi-fair schedulers: HSA and occupancy-bound execution
+We have described two schedulers: fair and unfair, under which starvation-freedom for
+blocking idioms is either always or never guaranteed. However, some GPU programming
+models have semi-fair schedulers, under which starvation-freedom is guaranteed for only
+some blocking idioms. We describe two such schedulers and informally analyse the idioms of
+Table 1 under these schedulers (summarised in Table 2). If starvation-freedom is guaranteed
+for all threads executing idiom i under scheduler s then we say that i is allowed under s.
+Similar to OpenCL, Heterogeneous System Architecture (HSA) is a parallel programming
+model designed to eﬃciently target GPUs [8]. Unlike OpenCL however, the HSA scheduler
+conditionally allows blocking between threads based on thread ids, a unique contiguous
+T. Sorensen, H. Evrard, and A. F. Donaldson
+23:3
+Table 1 Blocking synchronisation constructs considered in this work
+Barrier
+Mutex
+Producer-consumer (PC)
+Aligns the execution of all
+participating
+threads:
+a
+thread waits at the barrier
+until all threads have reached
+the barrier.
+Blocking, as a
+thread waiting at the barrier
+relies on the other threads
+to make enough progress to
+also reach the barrier.
+Provides mutual exclusion for a
+critical section. A thread acquires
+the mutex before executing the
+critical section, ensuring exclusive
+access. Upon leaving, the mutex
+is released. Blocking, as a thread
+waiting to acquire relies on the
+the thread in the critical section
+to eventually release the mutex.
+Provides a handshake betwee

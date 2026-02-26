@@ -1,0 +1,96 @@
+131
+Specifying and Testing GPU Workgroup Progress Models
+TYLER SORENSEN∗, UC Santa Cruz, USA
+LUCAS F. SALVADOR∗, Princeton University, USA
+HARMIT RAVAL∗, Princeton University, USA
+HUGUES EVRARD, Google, UK
+JOHN WICKERSON, Imperial College London, UK
+MARGARET MARTONOSI, Princeton University, USA
+ALASTAIR F. DONALDSON∗, Imperial College London, UK
+As GPU availability has increased and programming support has matured, a wider variety of applications are
+being ported to these platforms. Many parallel applications contain fine-grained synchronization idioms; as
+such, their correct execution depends on a degree of relative forward progress between threads (or thread
+groups). Unfortunately, many GPU programming specifications (e.g. Vulkan and Metal) say almost nothing
+about relative forward progress guarantees between workgroups. Although prior work has proposed a
+spectrum of plausible progress models for GPUs, cross-vendor specifications have yet to commit to any model.
+This work is a collection of tools and experimental data to aid specification designers when considering
+forward progress guarantees in programming frameworks. As a foundation, we formalize a small parallel
+programming language that captures the essence of fine-grained synchronization. We then provide a means of
+formally specifying a progress model, and develop a termination oracle that decides whether a given program
+is guaranteed to eventually terminate with respect to a given progress model. Next, we formalize a set of
+constraints that describe concurrent programs that require forward progress to terminate. This allows us to
+synthesize a large set of 483 progress litmus tests. Combined with the termination oracle, we can determine
+the expected status of each litmus test ś i.e. whether it is guaranteed to eventually terminate ś under various
+progress models. We present a large experimental campaign running the litmus tests across 8 GPUs from 5
+different vendors. Our results highlight that GPUs have significantly different termination behaviors under
+our test suite. Most notably, we find that Apple and ARM GPUs do not support the linear occupancy-bound
+model, as was hypothesized by prior work.
+CCS Concepts: • Computing methodologies →Parallel programming languages; • Theory of compu-
+tation →Program semantics.
+Additional Key Words and Phrases: liveness, semantics, GPU, model checking, test case synthesis
+ACM Reference Format:
+Tyler Sorensen, Lucas F. Salvador, Harmit Raval, Hugues Evrard, John Wickerson, Margaret Martonosi,
+and Alastair F. Donaldson. 2021. Specifying and Testing GPU Workgroup Progress Models. Proc. ACM Program.
+Lang. 5, OOPSLA, Article 131 (October 2021), 30 pages. https://doi.org/10.1145/3485508
+∗The first three authors led, and contributed equally to, the engineering component of the paper.
+Authors’ addresses: Tyler Sorensen, UC Santa Cruz, USA, tyler.sorensen@ucsc.edu; Lucas F. Salvador, Princeton University,
+USA, ls24@alumni.princeton.edu; Harmit Raval, Princeton University, USA, hraval@alumni.princeton.edu; Hugues Evrard,
+Google, UK, hevrard@google.com; John Wickerson, Imperial College London, UK, j.wickerson@imperial.ac.uk; Margaret
+Martonosi, Princeton University, USA, mrm@princeton.edu; Alastair F. Donaldson, Imperial College London, UK, alastair.
+donaldson@imperial.ac.uk.
+Permission to make digital or hard copies of part or all of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and
+the full citation on the first page. Copyrights for third-party components of this work must be honored. For all other uses,
+contact the owner/author(s).
+© 2021 Copyright held by the owner/author(s).
+2475-1421/2021/10-ART131
+https://doi.org/10.1145/3485508
+Proc. ACM Program. Lang., Vol. 5, No. OOPSLA, Article 131. Publication date: October 2021.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+131:2
+T. Sorensen, L. F. Salvador, H. Raval, H. Evrard, J. Wickerson, M. Martonosi, and A. F. Donaldson
+1
+INTRODUCTION
+Since its inception nearly a decade ago in frameworks such as CUDA and OpenCL, general-purpose
+computing on graphics processing units (GPGPU computing) has seen two trends: more and more
+applications are offloading computations to GPU devices, and the diversity and availability of GPU
+architectures has increased dramatically. Almost all major chip designers, e.g. Nvidia, Intel, AMD,
+ARM, Qualcomm, and Apple, provide their own GPU, and nearly every mainstream computing
+device contains a programmable GPU.
+While some GPU vendors provide programming frameworks specific to their devices (notably
+Nvidia with CUDA and Apple with Metal), the diversity of the modern computing landscape
+motivates cross-vendor GPU programming frameworks. Indeed, OpenCL has recently launched a
+overhauled version 3.0 with many modern features, including support for C++17 and integration
+with Clang [Khronos Group 2020a]. And at a lower level, Vulkan [Khronos Group 2020b] was
+released in 2016, is supported by most vendors, and has had considerable uptake by users.
+Independent forward progress on GPUs. Given implementation differences across GPUs, cross-
+vendor GPU frameworks differ from those of classic CPU programming. In particular, independent
+forward progress (henceforth referred to as progress) between threads of execution is not always
+guaranteed on a GPU. This means that it is not safeÐin generalÐto write a GPU program (often
+called a kernel) where one thread relies on another thread making progress. Full progress guarantees
+are difficult to provide for two main reasons. First, a GPU computation is split into sub-tasks, each of
+which is assigned to a subset of threads called a workgroup. If there are too many workgroups, they
+might not all execute concurrently. The GPU scheduler might delay execution of some workgroups
+until others have finished. If a thread from an early workgroup spins, waiting for a thread from a
+later, delayed, workgroup, this will lead to starvation and execution will not terminate. Second, the
+threads of a workgroup are usually organized into subgroups where each thread in a subgroup is
+really a lane in a stream of SIMD vector instructions. The threads in a subgroup share a program
+counter and thus do not progress independently.
+A case for supporting progress. Given this, many GPGPU framework specifications do not commit
+to any progress guarantees. Even the Nvidia-specific CUDA framework has only recently provided
+progress guarantees, requiring specialized hardware support [Nvidia 2017, p. 26]. The lack of
+cross-vendor progress guarantees severely limits the kinds of concurrent programs that can be
+safely offloaded onto GPUs, so that even fundamental synchronization idioms, such as mutexes and
+execution barriers, are not supported in principle and have been shown to lead to non-terminating
+behavior in practice [ElTantawy and Aamodt 2016; Sorensen et al. 2016]. We argue that GPU
+programming specifications should provide progress guarantees in some form, for several reasons:
+• Current devices empirically provide progress. Prior work has empirically shown that
+today’s GPUs appear to guarantee a limited form of progress between workgroups [Sorensen
+et al. 2016, 2019]. The putative progress model, Occupancy-Bound Execution (OBE), states that
+any workgroup that starts execution will be fairly scheduled until it finishes execution.
+• Developers already rely on empirical guarantees. Examples of developers relying on
+unofficial progress models for GPUs goes back to 2010, when a limited execution barrier was
+proposed [Xiao and Feng 2010]. Many examples followed, e.g. mutexes and work stealing,
+that rely on some progress model, typically OBE [Cederman and Tsigas 2008; Maleki et al.
+2016; Nelson and Palmieri 2019; Tzeng et al. 2010]. These folklore assumptions have had a
+decade to take root, but cross-vendor GPU programming fr

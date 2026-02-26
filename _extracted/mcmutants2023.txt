@@ -1,0 +1,183 @@
+MC Mutants: Evaluating and Improving Testing for Memory
+Consistency Specifications
+Reese Levine
+UC Santa Cruz
+USA
+Tianhao Guo∗
+New York University
+USA
+Mingun Cho∗
+UC Davis
+USA
+Alan Baker
+Google
+Canada
+Raph Levien
+Google
+USA
+David Neto
+Google
+Canada
+Andrew Quinn
+UC Santa Cruz
+USA
+Tyler Sorensen
+UC Santa Cruz
+USA
+ABSTRACT
+Shared memory platforms provide a memory consistency specifi-
+cation (MCS) so that developers can reason about the behaviors
+of their parallel programs. Unfortunately, ensuring that a platform
+conforms to its MCS is difficult, as is exemplified by numerous bugs
+in well-used platforms. While existing MCS testing approaches find
+bugs, their efficacy depends on the testing environment (e.g. if syn-
+thetic memory pressure is applied). MCS testing environments are
+difficult to evaluate since legitimate MCS violations are too rare to
+use as an efficacy metric. As a result, prior approaches have missed
+critical MCS bugs.
+This work proposes a mutation testing approach for evaluating
+MCS testing environments: MC Mutants. This approach mutates
+MCS tests such that the mutants simulate bugs that might occur. A
+testing environment can then be evaluated using a mutation score.
+We utilize MC Mutants in two novel contributions: (1) a parallel test-
+ing environment, and (2) An MCS testing confidence strategy that
+is parameterized over a time budget and confidence threshold. We
+implement our contributions in WebGPU, a new web-based GPU
+programming specification, and evaluate our techniques across
+four GPUs. We improve testing speed by three orders of magnitude
+over prior work, empowering us to create a conformance test suite
+that reproduces many mutated tests with high confidence and re-
+quires only 64 seconds per test. We identified two bugs in WebGPU
+implementations, one of which led to a specification change. More-
+over, the official WebGPU conformance test suite has adopted our
+approach due to its efficiency, effectiveness, and broad applicability.
+∗Work done while at UC Santa Cruz.
+Permission to make digital or hard copies of part or all of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for third-party components of this work must be honored.
+For all other uses, contact the owner/author(s).
+ASPLOS ’23, March 25–29, 2023, Vancouver, BC, Canada
+© 2023 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-9916-6/23/03.
+https://doi.org/10.1145/3575693.3575750
+CCS CONCEPTS
+• Software and its engineering →Software verification and
+validation; • Computing methodologies →Parallel program-
+ming languages.
+KEYWORDS
+memory consistency, parallel programming models, mutation test-
+ing
+ACM Reference Format:
+Reese Levine, Tianhao Guo, Mingun Cho, Alan Baker, Raph Levien, David
+Neto, Andrew Quinn, and Tyler Sorensen. 2023. MC Mutants: Evaluating and
+Improving Testing for Memory Consistency Specifications. In Proceedings
+of the 28th ACM International Conference on Architectural Support for Pro-
+gramming Languages and Operating Systems, Volume 2 (ASPLOS ’23), March
+25–29, 2023, Vancouver, BC, Canada. ACM, New York, NY, USA, 16 pages.
+https://doi.org/10.1145/3575693.3575750
+1
+INTRODUCTION
+A memory consistency specification (MCS) for a shared memory
+runtime platform defines the legal values that loads are allowed to
+observe, and thus, is crucial for program reasoning. For efficiency
+reasons [16], many platforms provide a relaxed MCS, which allows
+complex behaviors. Validating that a platform implementation hon-
+ors its MCS is a difficult, yet important, since a bug may lead to
+rare, non-deterministic application errors [3, 35].
+Early MCS testing work executed sequences of memory ac-
+cesses [17, 39] and then analyzed a trace of the observed values.
+More recent work uses formal specifications to derive small con-
+current tests, often called litmus tests, which are then executed
+for many iterations, checking for a violation at each iteration [5].
+Litmus testing strategies have found numerous bugs in runtime
+platforms [1, 4, 24, 29, 30].
+1.1
+Motivating Examples
+The effectiveness of litmus testing approaches is extremely sensitive
+to the testing environment, i.e. the context around the litmus test
+that creates stress on the platform. We use the two litmus tests of
+Fig. 1 to illustrate this. The CoRR (Coherence of Read-Read) test,
+shown in Fig. 1a, tests if the first read in a thread (operation
+a )
+This work is licensed under a Creative Commons Attribution 4.0 Interna-
+tional License.
+473
+ASPLOS ’23, March 25–29, 2023, Vancouver, BC, Canada
+Reese Levine, Tianhao Guo, Mingun Cho, Alan Baker, Raph Levien, David Neto, Andrew Quinn, and Tyler Sorensen
+thread 0
+thread 1
+a
+v0 = atomicLoad(x)
+c
+atomicStore(x,1)
+b
+v1 = atomicLoad(x)
+Condition: v0 == 1 && v1 == 0
+(a) Coherence of Read-Read (CoRR) litmus test
+thread 0
+thread 1
+a
+atomicStore(x, 1)
+d
+v0 = atomicLoad(y)
+b
+fence(release)
+e
+fence(acquire)
+c
+atomicStore(y, 1)
+f
+v1 = atomicLoad(x)
+Condition: v0 == 1 && v1 == 0
+(b) Message Passing rel/acq (MP-relacq) litmus test
+Figure 1: Two litmus tests that illustrate bugs in WebGPU
+found by our work. We observed executions that resulted in
+the condition being true, even though it is disallowed by the
+MCS. All memory is initialized to 0.
+can observe an updated value (from operation
+c ), while a follow-
+ing read (operation
+b ) reads a stale value (from the initial state).
+A straightforward testing environment (i.e. one without stress)
+observes no violations, but when executed in a stressful testing
+environment (e.g. as used in [1, 24]), the test evinces a bug in the
+WebGPU platform when executing on an Apple device with an
+Intel GPU.1
+The MP-relacq (Message Passing relacq) litmus test, shown in
+Fig. 1b, writes to location x ( a ) and sets a flag ( c ) in thread 0, then
+reads the flag ( d ) and reads the data ( f ) in thread 1. The fence
+instructions synchronize across the threads. A violation occurs if
+thread 1 observes the updated flag without observing the updated
+data. While existing stress testing environments did not reveal
+any violations, our novel parallel approach was able to observe
+violations in the WebGPU platform on AMD GPUs. This resulted
+in a fix to an AMD Vulkan compiler and a specification change to
+the WebGPU MCS [9].
+When testing, it is impossible to tell if an unobserved illegal
+execution is not allowed or if it is simply rare and was not exposed
+by the tests. Thus, effective MCS testing requires tuning testing
+environments to reduce the possibility of a missed bug. However,
+legitimate MCS violations are exceeding rare, and thus cannot be
+used as a metric for such tuning efforts. Existing approaches have
+tuned their testing environments by maximizing the number of
+weak, but allowed, behaviors of some litmus tests, yet have not
+provided justification on why this metric is valid. Finally, existing
+MCS testing techniques do not provide confidence in their ability
+to find MCS bugs. Consequently, it is difficult to gauge whether it
+is worth the time to perform more testing, especially when running
+in time-constrained environments such as a conformance test suite.
+The result of these limitations has been a lack of adoption of existing
+MCS testing approaches.
+1The bug is in the WebGPU implementation, whereby Google Chrome layers over
+Apple’s platform-level Metal API. We have filed an issue with Apple and await a
+resolution.
+1.2
+Our Approach: MC Mutants
+In this work, we propose Memory Consistency Mutants or MC Mu-
+tants, a methodology that quantitatively evaluates MCS testing
+environments using black-box mutation testing [13, 15]. Litmus
+tests are mutated in such a way that the erroneous behavior that the
+test was checking is are now allowed. A test environment kills the
+mutated test (mutant) by observing the newly allowed execution.
+The number of mutants that are killed is called the muta
