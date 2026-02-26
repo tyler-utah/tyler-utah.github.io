@@ -2,8 +2,8 @@
 
 All research papers by Tyler Sorensen and collaborators are provided in two markdown formats:
 
-- **Full Markdown**: Complete paper text converted from PDF to markdown, preserving the full content of each paper.
-- **Summary Markdown**: Concise summaries highlighting key contributions and takeaways.
+- **Full Markdown** (in [files/markdown/](markdown/)): Complete paper text converted from PDF.
+- **Summary Markdown** (in [files/summaries/](summaries/)): Concise summaries highlighting key contributions.
 
 These markdown versions are designed to make the papers easily accessible to both humans and AI agents.
 
@@ -13,7 +13,7 @@ These markdown versions are designed to make the papers easily accessible to bot
 
 **Authors:** J. Alglave, M. Batty, A. F. Donaldson, G. Gopalakrishnan, J. Ketema, D. Poetzl, T. Sorensen, J. Wickerson  
 **Venue:** ASPLOS, 2015  
-**PDF:** [asplos2015.pdf](../asplos2015.pdf) | **Full Markdown:** [asplos2015_full.md](asplos2015_full.md)
+**PDF:** [asplos2015.pdf](../asplos2015.pdf) | **Full Markdown:** [asplos2015.md](../markdown/asplos2015.md)
 
 This paper presents the first large-scale empirical study of concurrent memory behavior on deployed GPUs, exposing false assumptions in vendor documentation and programming guides.
 
@@ -33,7 +33,7 @@ GPU concurrency was poorly specified, forcing programmers to rely on unstated as
 
 **Authors:** Y. Xu, R. Sharma, Z. Chen, S. Mistry, T. Sorensen  
 **Venue:** IISWC, 2025 (Best Paper Award)  
-**PDF:** [bettertogether2025.pdf](../bettertogether2025.pdf) | **Full Markdown:** [bettertogether2025_full.md](bettertogether2025_full.md)
+**PDF:** [bettertogether2025.pdf](../bettertogether2025.pdf) | **Full Markdown:** [bettertogether2025.md](../markdown/bettertogether2025.md)
 
 This paper presents BetterTogether, a scheduling framework that enables fine-grained software pipelining on heterogeneous edge SoCs while accounting for inter-processing-unit interference.
 
@@ -54,7 +54,7 @@ Edge SoCs contain diverse processing units (big.LITTLE CPUs, GPUs, accelerators)
 
 **Authors:** T. Sorensen, H. Evrard, A. F. Donaldson  
 **Venue:** CONCUR, 2018  
-**PDF:** [concur2018.pdf](../concur2018.pdf) | **Full Markdown:** [concur2018_full.md](concur2018_full.md)
+**PDF:** [concur2018.pdf](../concur2018.pdf) | **Full Markdown:** [concur2018.md](../markdown/concur2018.md)
 
 This paper clarifies fairness properties of GPU schedulers, defining formal models for semi-fair scheduling that lies between fully fair and fully unfair.
 
@@ -74,7 +74,7 @@ GPU programming models like OpenCL provide almost no fairness guarantees, yet ma
 
 **Authors:** S. Siddens, S. Srivastava, R. Levine, J. Dykstra, T. Sorensen  
 **Venue:** ArXiv, 2026  
-**PDF:** [disorder.pdf](../disorder.pdf) | **Full Markdown:** [disorder_full.md](disorder_full.md)
+**PDF:** [disorder.pdf](../disorder.pdf) | **Full Markdown:** [disorder.md](../markdown/disorder.md)
 
 This paper presents MEMORY DISORDER, a novel timerless side-channel attack that exploits memory re-orderings arising from hardware relaxed memory consistency models. The attack requires only the ability to launch threads and execute basic memory loads and stores — no timers needed.
 
@@ -95,7 +95,7 @@ The key insight is that memory re-orderings — which arise naturally from hardw
 
 **Authors:** T. Sorensen, H. Evrard, A. F. Donaldson  
 **Venue:** FSE, 2017 (Distinguished Paper Award)  
-**PDF:** [fse2017.pdf](../fse2017.pdf) | **Full Markdown:** [fse2017_full.md](fse2017_full.md)
+**PDF:** [fse2017.pdf](../fse2017.pdf) | **Full Markdown:** [fse2017.md](../markdown/fse2017.md)
 
 This paper proposes cooperative kernels, an extension to the GPU programming model that enables fair scheduling of workgroups and supports multitasking for blocking algorithms.
 
@@ -115,7 +115,7 @@ Irregular data-parallel algorithms increasingly target GPUs but require blocking
 
 **Authors:** I. Chaturvedi, B. R. Godala, Y. Wu, Z. Xu, K. Iliakis, P.-E. Eleftherakis, S. Xydis, D. Soudris, T. Sorensen, S. Campanoni, T. M. Aamodt, D. I. August  
 **Venue:** ISCA, 2024  
-**PDF:** [ghost.pdf](../ghost.pdf) | **Full Markdown:** [ghost_full.md](ghost_full.md)
+**PDF:** [ghost.pdf](../ghost.pdf) | **Full Markdown:** [ghost.md](../markdown/ghost.md)
 
 This paper introduces GhOST, a minimal yet effective out-of-order (OoO) execution technique for GPUs that reduces stall cycles without the costly hardware of prior proposals.
 
@@ -135,7 +135,7 @@ GPUs use massive multi-threading to hide instruction latencies, but memory instr
 
 **Authors:** R. Levine, M. Cho, D. McKee, A. Quinn, T. Sorensen  
 **Venue:** ISSTA, 2023 (Distinguished Artifact Award)  
-**PDF:** [gpuharbor2023.pdf](../gpuharbor2023.pdf) | **Full Markdown:** [gpuharbor2023_full.md](gpuharbor2023_full.md)
+**PDF:** [gpuharbor2023.pdf](../gpuharbor2023.pdf) | **Full Markdown:** [gpuharbor2023.md](../markdown/gpuharbor2023.md)
 
 This paper presents GPUHarbor, a widescale GPU memory consistency specification (MCS) testing tool with web and Android interfaces that enabled the largest study of weak memory behaviors to date.
 
@@ -156,7 +156,7 @@ Memory consistency specifications are critical but testing tools have historical
 
 **Authors:** T. Sorensen, A. Manocha, E. Tureci, M. Orenes-Vera, J. L. Aragón, M. Martonosi  
 **Venue:** ICCAD, 2020 (Invited)  
-**PDF:** [iccad2020.pdf](../iccad2020.pdf) | **Full Markdown:** [iccad2020_full.md](iccad2020_full.md)
+**PDF:** [iccad2020.pdf](../iccad2020.pdf) | **Full Markdown:** [iccad2020.md](../markdown/iccad2020.md)
 
 This invited paper describes the DEC++ compiler and MosaicSim simulator pair, developed as part of the DECADES project for designing and taping out a new heterogeneous architecture.
 
@@ -176,7 +176,7 @@ With the end of transistor scaling trends, performance improvements now come fro
 
 **Authors:** T. Sorensen, J. Alglave, G. Gopalakrishnan, V. Grover  
 **Venue:** ICS, 2013 (1st Place Undergrad SRC)  
-**PDF:** [ics2013.pdf](../ics2013.pdf) | **Full Markdown:** [ics2013_full.md](ics2013_full.md)
+**PDF:** [ics2013.pdf](../ics2013.pdf) | **Full Markdown:** [ics2013.md](../markdown/ics2013.md)
 
 This early work proposes litmus tests for GPUs and an operational memory model (UGPU) for reasoning about GPU shared memory consistency, along with hardware testing results.
 
@@ -196,7 +196,7 @@ This foundational undergraduate work established the first systematic approach t
 
 **Authors:** T. Sorensen, S. Pai, A. F. Donaldson  
 **Venue:** IISWC, 2019 (Best Paper Award)  
-**PDF:** [iiswc2019.pdf](../iiswc2019.pdf) | **Full Markdown:** [iiswc2019_full.md](iiswc2019_full.md)
+**PDF:** [iiswc2019.pdf](../iiswc2019.pdf) | **Full Markdown:** [iiswc2019.md](../markdown/iiswc2019.md)
 
 This paper presents a methodology to automatically identify portable optimization policies for graph applications on GPUs, quantifying the trade-off between performance specialization and portability.
 
@@ -216,7 +216,7 @@ Optimizing graph applications for GPUs is labor-intensive due to complex interac
 
 **Authors:** O. Matthews, A. Manocha, D. Giri, M. Orenes-Vera, E. Tureci, T. Sorensen, T. Ham, J. L. Aragón, L. Carloni, M. Martonosi  
 **Venue:** ISPASS, 2020 (Best Paper Nomination)  
-**PDF:** [ispass2020.pdf](../ispass2020.pdf) | **Full Markdown:** [ispass2020_full.md](ispass2020_full.md)
+**PDF:** [ispass2020.pdf](../ispass2020.pdf) | **Full Markdown:** [ispass2020.md](../markdown/ispass2020.md)
 
 This paper introduces MosaicSim, a lightweight modular simulator for heterogeneous systems designed for hardware-software co-design exploration.
 
@@ -236,7 +236,7 @@ As heterogeneous systems become mainstream, simulation tools must support rich c
 
 **Authors:** T. Sorensen, A. F. Donaldson  
 **Venue:** IWOCL, 2016  
-**PDF:** [iwocl2016.pdf](../iwocl2016.pdf) | **Full Markdown:** [iwocl2016_full.md](iwocl2016_full.md)
+**PDF:** [iwocl2016.pdf](../iwocl2016.pdf) | **Full Markdown:** [iwocl2016.md](../markdown/iwocl2016.md)
 
 This experience report examines portability issues encountered when running OpenCL benchmarks across multiple GPU platforms from different vendors.
 
@@ -256,7 +256,7 @@ While OpenCL promises cross-platform portability, in practice many applications 
 
 **Authors:** T. Sorensen, S. Pai, A. F. Donaldson  
 **Venue:** IWOCL, 2019 (Best Paper Award)  
-**PDF:** [iwocl2019.pdf](../iwocl2019.pdf) | **Full Markdown:** [iwocl2019_full.md](iwocl2019_full.md)
+**PDF:** [iwocl2019.pdf](../iwocl2019.pdf) | **Full Markdown:** [iwocl2019.md](../markdown/iwocl2019.md)
 
 This paper evaluates how support for various OpenCL features across GPU vendors affects the performance of graph applications.
 
@@ -276,7 +276,7 @@ OpenCL promises platform portability, but adoption of features varies widely acr
 
 **Authors:** T. Sorensen, H. Khlaaf  
 **Venue:** ArXiv, 2024  
-**PDF:** [leftoverlocals2024.pdf](../leftoverlocals2024.pdf) | **Full Markdown:** [leftoverlocals2024_full.md](leftoverlocals2024_full.md)
+**PDF:** [leftoverlocals2024.pdf](../leftoverlocals2024.pdf) | **Full Markdown:** [leftoverlocals2024.md](../markdown/leftoverlocals2024.md)
 
 This paper describes LeftoverLocals (CVE-2023-49691), a vulnerability that allows data recovery from GPU local memory created by another process, with particular implications for LLM and ML model security.
 
@@ -297,7 +297,7 @@ As ML applications increasingly run on diverse GPUs (not just NVIDIA), the secur
 
 **Authors:** R. Levine, T. Guo, M. Cho, A. Baker, R. Levien, D. Neto, A. Quinn, T. Sorensen  
 **Venue:** ASPLOS, 2023 (Distinguished Paper Award, Distinguished Artifact Award)  
-**PDF:** [mcmutants2023.pdf](../mcmutants2023.pdf) | **Full Markdown:** [mcmutants2023_full.md](mcmutants2023_full.md)
+**PDF:** [mcmutants2023.pdf](../mcmutants2023.pdf) | **Full Markdown:** [mcmutants2023.md](../markdown/mcmutants2023.md)
 
 This paper proposes MC Mutants, a mutation testing approach for evaluating and improving memory consistency specification (MCS) testing environments.
 
@@ -318,7 +318,7 @@ The effectiveness of memory consistency testing depends heavily on the testing e
 
 **Authors:** J. I. Dagostini, J. B. Manzano, T. Sorensen, S. Beamer  
 **Venue:** IISWC, 2025  
-**PDF:** [miniGiraffe.pdf](../miniGiraffe.pdf) | **Full Markdown:** [miniGiraffe_full.md](miniGiraffe_full.md)
+**PDF:** [miniGiraffe.pdf](../miniGiraffe.pdf) | **Full Markdown:** [miniGiraffe.md](../markdown/miniGiraffe.md)
 
 This paper presents miniGiraffe, a proxy application for Giraffe, a complex pangenomic mapping tool that operates over graph-based structures capturing genetic variation across a species.
 
@@ -338,7 +338,7 @@ Large scientific applications like pangenome mapping tools are complex and diffi
 
 **Authors:** L. Geeson, J. Brotherston, W. Dijkstra, A. F. Donaldson, L. Smith, T. Sorensen, J. Wickerson  
 **Venue:** OOPSLA, 2024  
-**PDF:** [mix_testing.pdf](../mix_testing.pdf) | **Full Markdown:** [mix_testing_full.md](mix_testing_full.md)
+**PDF:** [mix_testing.pdf](../mix_testing.pdf) | **Full Markdown:** [mix_testing.md](../markdown/mix_testing.md)
 
 This paper presents mix testing, a technique for finding compiler bugs that arise when concurrently compiled binaries from different compilers (or compiler versions) are composed together.
 
@@ -358,7 +358,7 @@ While ABIs ensure binary compatibility, there are no official ABIs for concurren
 
 **Authors:** T. Sorensen, A. F. Donaldson, M. Batty, G. Gopalakrishnan, Z. Rakamaric  
 **Venue:** OOPSLA, 2016  
-**PDF:** [oopsla2016.pdf](../oopsla2016.pdf) | **Full Markdown:** [oopsla2016_full.md](oopsla2016_full.md)
+**PDF:** [oopsla2016.pdf](../oopsla2016.pdf) | **Full Markdown:** [oopsla2016.md](../markdown/oopsla2016.md)
 
 This paper presents the first portable and formally-specified inter-workgroup barrier for GPUs, addressing the deadlock risk from occupancy-bound execution.
 
@@ -378,7 +378,7 @@ Inter-workgroup barriers are essential for many GPU applications but not support
 
 **Authors:** J. Kirkham, T. Sorensen, E. Tureci, M. Martonosi  
 **Venue:** OOPSLA, 2020  
-**PDF:** [oopsla2020.pdf](../oopsla2020.pdf) | **Full Markdown:** [oopsla2020_full.md](oopsla2020_full.md)
+**PDF:** [oopsla2020.pdf](../oopsla2020.pdf) | **Full Markdown:** [oopsla2020.md](../markdown/oopsla2020.md)
 
 This paper rigorously investigates empirical memory model testing methodology, proposing techniques for efficient tuning of stressing parameters and analysis of large numbers of testing observations.
 
@@ -399,7 +399,7 @@ Memory consistency testing relies on litmus tests run many times to detect excee
 
 **Authors:** D. Iorga, A. F. Donaldson, T. Sorensen, J. Wickerson  
 **Venue:** OOPSLA, 2021  
-**PDF:** [oopsla2021a.pdf](../oopsla2021a.pdf) | **Full Markdown:** [oopsla2021a_full.md](oopsla2021a_full.md)
+**PDF:** [oopsla2021a.pdf](../oopsla2021a.pdf) | **Full Markdown:** [oopsla2021a.md](../markdown/oopsla2021a.md)
 
 This paper provides the first formal study of shared memory semantics for heterogeneous CPU/FPGA systems, focusing on Intel's Xeon+FPGA platform.
 
@@ -419,7 +419,7 @@ CPU/FPGA systems with fine-grained shared memory are gaining popularity but pres
 
 **Authors:** T. Sorensen, L. F. Salvador, H. Raval, H. Evrard, J. Wickerson, M. Martonosi, A. F. Donaldson  
 **Venue:** OOPSLA, 2021  
-**PDF:** [oopsla2021b.pdf](../oopsla2021b.pdf) | **Full Markdown:** [oopsla2021b_full.md](oopsla2021b_full.md)
+**PDF:** [oopsla2021b.pdf](../oopsla2021b.pdf) | **Full Markdown:** [oopsla2021b.md](../markdown/oopsla2021b.md)
 
 This paper provides a collection of tools and experimental data to aid specification designers in reasoning about forward progress guarantees for GPU workgroups.
 
@@ -440,7 +440,7 @@ GPU programming specifications say almost nothing about forward progress guarant
 
 **Authors:** D. McKee, Z. Lin, B. Fox, J. Li, J. Zhu, M. Seif El-Nasr, T. Sorensen  
 **Venue:** SIGCSE, 2026  
-**PDF:** [parallelx2025.pdf](../parallelx2025.pdf) | **Full Markdown:** [parallelx2025_full.md](parallelx2025_full.md)
+**PDF:** [parallelx2025.pdf](../parallelx2025.pdf) | **Full Markdown:** [parallelx2025.md](../markdown/parallelx2025.md)
 
 This paper presents Parallel X, a redesigned educational game for teaching parallel programming concepts to college students.
 
@@ -460,7 +460,7 @@ Prior educational games for parallelism suffered from weak semantic foundations 
 
 **Authors:** M. U. Tariq, A. Jangda, A. Moreira, M. Musuvathi, T. Sorensen  
 **Venue:** ArXiv, 2025  
-**PDF:** [peak2025.pdf](../peak2025.pdf) | **Full Markdown:** [peak2025_full.md](peak2025_full.md)
+**PDF:** [peak2025.pdf](../peak2025.pdf) | **Full Markdown:** [peak2025.md](../markdown/peak2025.md)
 
 This paper introduces Peak, an AI-powered framework for optimizing GPU kernels using natural language transformation specifications executed by LLMs.
 
@@ -481,7 +481,7 @@ Peak captures the workflow of expert performance engineers by expressing iterati
 
 **Authors:** T. Sorensen, A. F. Donaldson  
 **Venue:** PLDI, 2016  
-**PDF:** [pldi2016.pdf](../pldi2016.pdf) | **Full Markdown:** [pldi2016_full.md](pldi2016_full.md)
+**PDF:** [pldi2016.pdf](../pldi2016.pdf) | **Full Markdown:** [pldi2016.md](../markdown/pldi2016.md)
 
 This paper presents a systematic testing environment that uses stressing and fuzzing to reveal weak memory bugs in GPU applications.
 
@@ -501,7 +501,7 @@ GPU applications can exhibit subtle bugs due to weak memory effects. These bugs 
 
 **Authors:** N. Chong, T. Sorensen, J. Wickerson  
 **Venue:** PLDI, 2018 (Best Paper Award)  
-**PDF:** [pldi2018.pdf](../pldi2018.pdf) | **Full Markdown:** [pldi2018_full.md](pldi2018_full.md)
+**PDF:** [pldi2018.pdf](../pldi2018.pdf) | **Full Markdown:** [pldi2018.md](../markdown/pldi2018.md)
 
 This paper extends existing axiomatic weak memory models for x86, Power, ARMv8, and C++ with new rules for transactional memory (TM), clarifying their combined semantics.
 
@@ -521,7 +521,7 @@ Both weak memory models and transactional memory are well-studied individually, 
 
 **Authors:** J. Wickerson, M. Batty, T. Sorensen, G. Constantinides  
 **Venue:** POPL, 2017  
-**PDF:** [popl2017.pdf](../popl2017.pdf) | **Full Markdown:** [popl2017_full.md](popl2017_full.md)
+**PDF:** [popl2017.pdf](../popl2017.pdf) | **Full Markdown:** [popl2017.md](../markdown/popl2017.md)
 
 This paper presents a technique for automatically solving four key tasks in memory consistency model (MCM) design: generating conformance tests, distinguishing MCMs, checking compiler optimizations, and checking compiler mappings.
 
@@ -541,7 +541,7 @@ Memory consistency models are complex and counterintuitive, making them challeng
 
 **Authors:** Y. Xu, A. Li, T. Sorensen  
 **Venue:** ISPASS, 2023  
-**PDF:** [redwood2023.pdf](../redwood2023.pdf) | **Full Markdown:** [redwood2023_full.md](redwood2023_full.md)
+**PDF:** [redwood2023.pdf](../redwood2023.pdf) | **Full Markdown:** [redwood2023.md](../markdown/redwood2023.md)
 
 This paper presents Redwood, a framework for writing heterogeneous traverse-compute workloads that harness the complementary strengths of CPUs and accelerators on shared memory heterogeneous systems.
 
@@ -561,7 +561,7 @@ Shared memory heterogeneous systems (SoCs) are mainstream but difficult to targe
 
 **Authors:** D. Iorga, T. Sorensen, J. Wickerson, A. F. Donaldson  
 **Venue:** RTAS, 2020  
-**PDF:** [rtas2020.pdf](../rtas2020.pdf) | **Full Markdown:** [rtas2020_full.md](rtas2020_full.md)
+**PDF:** [rtas2020.pdf](../rtas2020.pdf) | **Full Markdown:** [rtas2020.md](../markdown/rtas2020.md)
 
 This paper explores the design and evaluation of techniques for empirically testing multicore interference using enemy programs, with focus on measurement reliability and portability.
 
@@ -581,7 +581,7 @@ Multicore processors share resources (caches, buses, memory) that cause otherwis
 
 **Authors:** R. Levine, A. Lee, N. Abbas, K. Little, T. Sorensen  
 **Venue:** OOPSLA, 2025  
-**PDF:** [saferace.pdf](../saferace.pdf) | **Full Markdown:** [saferace_full.md](saferace_full.md)
+**PDF:** [saferace.pdf](../saferace.pdf) | **Full Markdown:** [saferace.md](../markdown/saferace.md)
 
 This paper identifies a specification vulnerability in the WebGPU Shading Language (WGSL) where data races can compromise memory safety, and proposes the SafeRace framework to address it.
 
@@ -602,7 +602,7 @@ WebGPU enables powerful GPU computation in web browsers, but WGSL's compilation 
 
 **Authors:** I. Chaturvedi, B. R. Godala, T. Sorensen, A. Gangavaram, T. M. Aamodt, D. Flyer, D. I. August  
 **Venue:** MICRO, 2025  
-**PDF:** [shadow.pdf](../shadow.pdf) | **Full Markdown:** [shadow_full.md](shadow_full.md)
+**PDF:** [shadow.pdf](../shadow.pdf) | **Full Markdown:** [shadow.md](../markdown/shadow.md)
 
 This paper presents SHADOW, the first asymmetric SMT core that dynamically balances instruction-level parallelism (ILP) and thread-level parallelism (TLP) by running out-of-order (OoO) and in-order (InO) threads simultaneously on the same core.
 
@@ -623,7 +623,7 @@ Many applications exhibit shifting demands between ILP and TLP due to irregular 
 
 **Authors:** A. Manocha, T. Sorensen, E. Tureci, O. Matthews, J. L. Aragón, M. Martonosi  
 **Venue:** TACO, 2021  
-**PDF:** [taco2021.pdf](../taco2021.pdf) | **Full Markdown:** [taco2021_full.md](taco2021_full.md)
+**PDF:** [taco2021.pdf](../taco2021.pdf) | **Full Markdown:** [taco2021.md](../markdown/taco2021.md)
 
 This paper presents GraphAttack, a hardware-software approach that accelerates graph applications on in-order (InO) multicore architectures by optimizing data supply.
 
@@ -643,7 +643,7 @@ Graph applications suffer from irregular memory access patterns that stall even 
 
 **Authors:** J. Alglave, L. Maranget, D. Poetzl, T. Sorensen  
 **Venue:** TinyToCS, 2015  
-**PDF:** [tinytocs2015.pdf](../tinytocs2015.pdf) | **Full Markdown:** [tinytocs2015_full.md](tinytocs2015_full.md)
+**PDF:** [tinytocs2015.pdf](../tinytocs2015.pdf) | **Full Markdown:** [tinytocs2015.md](../markdown/tinytocs2015.md)
 
 This short paper, inspired by Descartes' methodic doubt, advocates for systematically testing the memory ordering behavior of multi- and manycore chips rather than trusting folklore claims.
 
