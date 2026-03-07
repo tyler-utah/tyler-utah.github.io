@@ -89,7 +89,7 @@
 
             <h3>Did You Know? <span class="agent-label">(daily fact mined from my papers)</span></h3>
             <!-- AGENT-UPDATED: did-you-know -->
-            <p id="did-you-know"><strong>Did you know?</strong> WebGPU's Shading Language (WGSL) has a subtle specification vulnerability: data races in GPU shaders can be compiled through intermediate representations where an optimizing compiler may legitimately remove memory-safety bounds checks — creating what the authors call a "ticking time bomb" as GPU compilers rapidly evolve. The <em>SafeRace</em> paper discovered concrete GPU memory isolation vulnerabilities in Apple and AMD GPUs, and a security-critical miscompilation of WGSL in a pre-release version of Firefox. <em>(from: <a href="files/markdown/saferace.md">SafeRace: Assessing and Addressing WebGPU Memory Safety in the Presence of Data Races</a>)</em></p>
+            <p id="did-you-know"><strong>Did you know?</strong> Prior GPU out-of-order (OoO) execution research was evaluated using Nvidia's PTX intermediate representation — but <em>GhOST</em> showed that the optimized static scheduling in the final compiled binary actually negates many of those claimed improvements, and the previous state-of-the-art OoO technique even causes an average <em>slowdown</em> on real binaries. GhOST itself, by contrast, achieves a 36% maximum and 6.9% geometric-mean speedup on GPU binaries with only a 0.007% increase in chip area. <em>(from: <a href="files/markdown/ghost.md">GhOST: a GPU Out-of-Order Scheduling Technique for Stall Reduction</a>)</em></p>
 
             <h3>Research Idea <span class="agent-label">(daily idea mined from my papers and related works on arXiv)</span></h3>
             <!-- AGENT-UPDATED: research-idea -->

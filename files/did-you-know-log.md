@@ -2,7 +2,7 @@
 
 <!-- Most recent entries appear at the top. -->
 
-## 2026-03-03
+## 2026-03-02
 
 <strong>Did you know?</strong> There is no official ABI (Application Binary Interface) for concurrent programs — meaning that mixing binaries compiled by different compilers (e.g., LLVM and GCC) using different mappings of C/C++ atomic operations to assembly is technically undefined, yet it happens routinely in industry. The <em>Mix Testing</em> technique exposed this gap by discovering four previously-unknown concurrency bugs in LLVM and GCC, and one prospective bug in proposed JVM mappings, simply by compiling different parts of a test program with different atomic-operation mappings and linking them together. <em>(from: <a href="files/markdown/mix_testing.md">Mix Testing: Specifying and Testing ABI Compatibility of C/C++ Atomics Implementations</a>)</em>
 
