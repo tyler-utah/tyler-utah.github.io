@@ -2,6 +2,10 @@
 
 <!-- Most recent entries appear at the top. -->
 
+## 2026-03-19
+
+<strong>Did you know?</strong> Traditional simultaneous multithreading (SMT) designs must choose between out-of-order (OoO) threads (for instruction-level parallelism) or in-order (InO) threads (for thread-level parallelism) — but <em>SHADOW</em> is the first CPU architecture to run both kinds of threads concurrently on the same core, dynamically stealing work between them. On memory-bound sparse workloads like those found in deep learning and graph processing, SHADOW achieves up to <strong>3.16×</strong> speedup and 1.33× average improvement over a standard OoO CPU, with only 1% area and power overhead. <em>(from: <a href="files/markdown/shadow.md">SHADOW: Simultaneous Multi-Threading Architecture with Asymmetric Threads</a>)</em>
+
 ## 2026-03-11
 
 <strong>Did you know?</strong> Prior GPU out-of-order (OoO) execution research was evaluated using Nvidia's PTX intermediate representation — but <em>GhOST</em> showed that the optimized static scheduling in the final compiled binary actually negates many of those claimed improvements, and the previous state-of-the-art OoO technique even causes an average <em>slowdown</em> on real binaries. GhOST itself, by contrast, achieves a 36% maximum and 6.9% geometric-mean speedup on GPU binaries with only a 0.007% increase in chip area. <em>(from: <a href="files/markdown/ghost.md">GhOST: a GPU Out-of-Order Scheduling Technique for Stall Reduction</a>)</em>
