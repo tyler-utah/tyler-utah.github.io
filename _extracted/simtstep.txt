@@ -1,0 +1,1475 @@
+SIMT-Step Execution: A Flexible Operational Semantics for
+GPU Subgroup Behavior
+ZHEYUAN CHEN,University of California at Santa Cruz, USA
+NAOMI REHMAN,University of California at Santa Barbara, USA
+GUIDO MARTÍNEZ,Microsoft Research, USA
+TYLER SORENSEN,Microsoft Research, USA and University of California at Santa Cruz, USA
+GPU hardware implements a SIMT execution model, where small groups of threads, called subgroups (or
+warps in CUDA), execute synchronously. Languages expose this through high-performance subgroup-level
+APIs. However, providing precise subgroup semantics in languages is challenging, as compilers may transform
+the program, potentially disrupting source-level synchronous behavior even if the hardware is synchronous.
+As a result, no GPU programming language provides rigorous semantics for subgroup execution.
+In this work, we present SIMT-Step, a formal and flexible operational semantics for subgroup execution.
+At its core is a new semantic object, dynamic basic blocks, which enables precise specification of converged
+subgroup execution. SIMT-Step then provides flexibility for the execution of instructions, which can be
+collective, synchronous, or independent. We propose several candidate instantiations of SIMT-Step and design
+a suite of idiomatic tests to distinguish them, highlighting counter-intuitive behavior that arises under relaxed
+variants. We implement SIMT-Step in TLA+ and validate the behavior of the tests. To investigate how closely
+SIMT-Step models real-world GPU behavior, we conduct a fuzzing campaign, spanning ten GPUs and eight
+vendors. Our empirical study shows that non-synchronous behaviors are rare and appear on only a small
+number of devices; however, detailed investigation into these behaviors was inconclusive as to whether they
+are intentional or not. Combined, these contributions provide both a theoretical foundation and practical tools
+for reasoning about subgroup semantics in GPU programming languages.
+CCS Concepts:•Computing methodologies → Parallel programming languages;•Theory of compu-
+tation→Operational semantics.
+Additional Key Words and Phrases: GPU semantics, subgroup execution, operational semantics
+ACM Reference Format:
+Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen. 2026. SIMT-Step Execution: A Flexible
+Operational Semantics for GPU Subgroup Behavior.Proc. ACM Program. Lang.10, PLDI, Article 219 (June 2026),
+25 pages. https://doi.org/10.1145/3808297
+1 Introduction
+GPUs are now essential to modern computing, driving workloads in machine learning, graphics,
+and scientific simulation. Their impressive efficiency stems from a massively parallel execution
+model, but comes at a cost: GPU programming models are complex, evolve rapidly, and often
+leave important behaviors underspecified. As GPUs grow in importance, the need for precise,
+formal semantics becomes critical. Specification designers must balance abstraction, portability,
+and implementation flexibility. Without rigorous foundations, the community is left to rely on
+Authors’ Contact Information: Zheyuan Chen, University of California at Santa Cruz, , USA, zchen406@ucsc.edu; Naomi
+Rehman, University of California at Santa Barbara, , USA, nrehman@ucsb.edu; Guido Martínez, Microsoft Research, , USA,
+guimartinez@microsoft.com; Tyler Sorensen, Microsoft Research, , USA and University of California at Santa Cruz, , USA,
+tsorensen@microsoft.com.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+©2026 Copyright held by the owner/author(s).
+ACM 2475-1421/2026/6-ART219
+https://doi.org/10.1145/3808297
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:2 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+fragile assumptions, risking subtle bugs and missed optimizations. Modern GPU programming
+frameworks can be vendor-specific, e.g., CUDA [44] for NVIDIA hardware, or cross-platform, e.g.,
+Vulkan [27], which uses the portable SPIR-V intermediate shader (kernel) language.
+1int main () {
+2// exec . by {0 ,1}; result of 2
+3int val _ a = subgroupAdd (1) ;
+4int val _ b ;
+5if ( tid == 0)
+6// exec . by {0}; result of 1
+7val _ b = subgroupAdd (1) ;
+8else
+9// exec . by {1}; result of 1
+10val _ b = subgroupAdd (1) ;
+11// exec . by {0 ,1}; result of 2
+12int val _ c = subgroupAdd (1) ;
+13}
+Fig. 1. An example showing different behaviors
+of subgroup collective operations in converged,
+diverged, and merged code blocks.
+Init:g[0] = 0, g[1] = 0;
+1int main () {
+2int index _a , index _ b ;
+3if ( tid == 0) {
+4index _ a = 0; index _ b = 1;
+5}
+6if ( tid == 1) {
+7index _ a = 1; index _ b = 0;
+8}
+9atomicStore (& g [ index _ a ] , 0) ;
+10( opt .) subgroupAdd (0) ;
+11atomicStore (& g [ index _ b ] , 1) ;
+12}
+Allowed behaviors
+Lockstep:g[0] == 1 && g[1] == 1 ;
+Interleaving:g[0] == 1 && g[1] == 1 ||
+g[0] == 0 && g[1] == 1 ||
+g[0] == 1 && g[1] == 0 ;
+Fig. 2. An example executed with two threads
+each in the same subgroup. The allowed behaviors
+explore whether subgroup threads are guaranteed
+to execute in lockstep and whether subgroup op-
+erations provide synchronization.
+Over the years, components of the GPU program-
+ming model have been formalized. For example,
+given the complexity of the GPU hierarchy, much
+attention has been given to the memory consis-
+tency model. This includes formalizations of existing
+language specifications [2, 53], new model propos-
+als [20], and empirical investigations [29]. Notably,
+both PTX (NVIDIA’s IR for CUDA) and SPIR-V now
+include formal specifications [35, 52]. Other works
+have formalized control flow properties [30, 31] and
+forward progress guarantees [19, 50] for GPU sys-
+tems. Still, many aspects of the GPU programming
+model remain underspecified. One increasingly crit-
+ical example issubgroup behavior. Subgroups (warps
+in CUDA) are small groups of threads that execute
+together in a SIMT (Single Instruction, Multiple
+Threads) manner ([45, §7.1]). Due to their close prox-
+imity in hardware, subgroup threads can efficiently
+cooperate; these capabilities are exposed to program-
+mers through subgroup APIs in GPU languages, and
+they are widely used in performance-critical code,
+e.g., [10].
+Although subgroup threads nominally execute to-
+gether under the SIMT model, two compounding
+issues complicate their specification. First, subgroup
+operations may appear in divergent control flow,
+where threads within a subgroup take different con-
+trol flow paths, making it unclear which threads are
+required to participate. Second, the degree of implicit
+synchronization provided within a subgroup, both in
+regular execution and during subgroup operations,
+is not well specified, and compiler transformations
+might further obscure these behaviors.
+1.1 Examples: Intuition and Nuance
+We highlight some of these difficulties with two ex-
+amples. We use a generic pseudo GPU kernel lan-
+guage that resembles modern GPU kernel languages. To more precisely highlight the issues around
+subgroup synchronization, we will assume a sequentially consistent memory module throughout
+our examples. Later, we will show how to extend our model with fragments of a more realistic
+relaxed memory model (Sec. 4.5 ). Global memory (accessible across all threads) is denoted with g.
+Converged, Diverged, and Merged.We start by providing intuition about subgroup operations with
+the example in Fig. 1, which is executed by two threads in the same subgroup. The subgroupAdd
+operation simply adds the provided values across the subgroup from participating threads. The
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:3
+operation on line 3 is executed by both threads and returns 2 (as each thread contributes 1). However,
+on line 5, the program contains divergent behavior, where threads from the same subgroup take
+different paths. The subgroup operations on lines 7 and 10 are described asnon-uniform, i.e., they
+are executed by a subset of a subgroup. In this case, the operations on lines 7 and 10 are executed by
+threads 0 and 1, respectively, resulting in the value 1 for each thread. Finally, control flow merges
+for the subgroup operation on line 12, which is executed by both threads and returns 2.
+This simple example already shows some nuances. Intuitively, a compiler should not flatten the
+if/else control flow even though both paths contain the same instruction, as it would impact the
+participating threads, returning 2 instead of 1. Similarly, the system should ensure that both threads
+converge before the subgroup operation on line 12.
+Lockstep or Independent?Fig. 2 presents another example with less obvious behavior. Similarly,
+this example is executed by two threads in the same subgroup, each with a unique thread ID (tid).
+Each thread performs local initializations before reconverging at line 9, where both execute two
+memory stores (at locations g[0] and g[1]), potentially separated by a subgroup operation. First,
+consider the programwithoutthe subgroup operation (line 10). Many prior works, including formal
+specifications [7, 34], modeledlockstepsubgroup execution, with all converged threads advancing
+together instruction by instruction. This assumption seems to remain common in developers, where
+lockstep execution is often taken as the default mental model. Under this constrained model, threads
+0 and 1 would execute line 9 together, storing the value 0 to g[0] and g[1], respectively. After
+completion, they advance to line 11, where threads 0 and 1 store the value 1 to g[1] and g[0],
+respectively. This tightly synchronized execution permits only theLockstepbehavior.
+However, GPU specifications have shifted toward allowingindependentintra-subgroup execution,
+where threads do not have to execute synchronously. Thus, interleaving behaviors would be
+permitted. Specifically, thread 0 could run first, storing 0 to g[0] and then 1 to g[1], followed by
+thread 1 storing 0 to g[1] and then 1 to g[0], resulting in g[0] == 1 && g[1] == 0 . Reversing
+the thread order yields another valid outcome:g[0] == 0 && g[1] == 1.
+Even with lockstep hardware, a relaxed specification can still be exploited by an optimizing
+compiler via theas-ifrule and cross-thread reasoning. For example, given a programming language
+with an interleaving specification, but a backend with lockstep behavior, a compiler may transform
+the program as long as permitted behaviors are preserved. In Fig. 2, it could rewrite line 4 as
+index_a = 1; index_b = 0; , causing both threads to store 0 to g[0] and 1 to g[1] in the final
+store (line 11), yielding a legal interleaved behavior despite synchronous hardware. This rewrite
+makes both branches identical, enabling flattening and eliminating divergence, which is inefficient
+on GPUs. It may also improve memory access patterns (e.g., avoiding bank conflicts [12] or enabling
+coalescing [15, 55]). Thus, platform implementers may favor more permissive specifications that
+enable such optimizations, even on synchronous hardware.
+Subgroup Operation Synchronization.Now consider the test with the line 10 subgroup operation
+included. This test raises the question: does a subgroup operation imply subgroup synchronization?
+That is, if the specification permits interleaved behaviors for memory operations, does a subgroup
+operation synchronize threads? If so, then including the subgroup operation would guarantee the
+lockstep behavior. In this example, the addition is trivial as each thread provides a constant (0),
+and thus, an optimizing compiler could be tempted to replace the operation with a constant 0. Is
+removing the subgroup operation entirely allowed? If so, and under interleaving semantics, then
+one could imagine a sequence of transformations: first, removing the subgroup operation; and
+next, inducing an interleaving behavior. Thus, even a subgroup operation may not be sufficient to
+provide synchronous behavior.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:4 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+Table 1. SIMT-Step models, each with a description and a documenting tests. Tests are given as pairs, where
+the model allows the relaxed behavior in the first test, and enforces the synchronous behavior in the second.
+The sg subscript is given to tests where optional subgroup operations are included. The first model (strongest)
+has no test in which it shows relaxations; conversely, the last model (weakest) has no test in which it
+guarantees the synchronous behavior. Color shading indicates semantic complexity, with the lighter shaded
+SSO requires extra guards in semantics, and the darker shaded Spec and Symb requiring advanced semantic
+concepts, such as speculation and symbolic reasoning.
+SIMT-Step Model Description Tests
+Collective Memory (CM) Memory/subgroup ops, branches, and labels are collective (NA, Fig. 3)
+Sync. Memory (SM) Memory is synchronous but not collective (Fig. 3, Fig. 2)
+Sync. Control Flow (SCF) Synchronizes at basic block entry, exits via collectives (Fig. 2, Fig. 9⊘sg)
+Sync. SG Op (SSO) Synchronizes at SG ops and associated control dependencies (Fig. 9⊘sg, Fig. 9⊕sg)
+Speculative SG Op (Spec) May speculatively run SG ops before synchronization (Fig. 10, Fig. 11)
+Symbolic SG op (Symb) SG Ops don’t synchronize and return symbolic values (Fig. 11, NA)
+1.2 SIMT-Step Execution: A Flexible Operational Semantics for Subgroups
+In this paper, we introduceSIMT-Step Execution, a flexible operational semantics for specifying
+subgroup behavior in GPU programming languages. SIMT-Step can be instantiated in multiple ways,
+for example, to account for the range of behaviors discussed in Sec. 1.1 and to explore their broader
+consequences. SIMT-Step was developed in discussion with official GPU specification groups;
+and while there has not yet been any official adoption, SIMT-Step is designed to accommodate a
+spectrum of behaviors and optimizations.
+Dynamic Blocks.Subgroup operations are unusual because they are bothcollective, combining
+inputs across threads, andnon-uniform, i.e., not all threads are required to participate, as shown
+in Fig. 1. SIMT-Step first provides the semantic foundations to specify the set of participating
+threads in subgroup operations, even under divergence. To do this, we extend the notion of a
+dynamic instruction instance to basic blocks, defining thedynamic block(Sec. 3). All threads begin
+execution in the dynamic entry block; threads that take the same branch continue together into a
+subsequent shared dynamic block, with designated dynamic blocks where divergent threads will
+merge. Threads belonging to the same subgroup that execute the same dynamic block are said to be
+active threadsfor that dynamic block (and its constituent instructions). If a dynamic block contains
+a subgroup operation, then all of its active threads will participate in that operation.
+Flexible Instruction Execution.Next, SIMT-Step provides flexibility on how instructions are exe-
+cuted. Each instruction can be executed as one of the following:
+(1) Independently: Threads execute these instructions independently under a standard concur-
+rency model, with any allowed interleaving possible.
+(2)Synchronously: These instructions implicitly synchronize active threads.
+(3)Collectively: The operations execute collectively (atomically) across active threads.
+SIMT-Step Instantiations.By specifying different sets of independent, synchronous, and collective
+instructions, we define several instantiations of SIMT-Step that could be candidates for inclusion in
+language specifications. These instantiations can be ordered from stronger (more synchronization)
+to weaker (more independence). The various models, short descriptions, and documenting tests are
+summarized in Tab. 1, and their definitions are formalized throughout the paper. Our tools and
+implementations focus on the first four models, which we dubdirect models, as we deem the last
+two models too complex for detailed exploration.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:5
+We implement the SIMT-Step direct models in TLA+, providing executable semantics (Sec. 5).
+To facilitate further testing and exploration, we provide a frontend that accepts tests written in a
+higher-level shading language: GLSL.
+Empirical Exploration.One challenge in specifying subgroup behavior is the lack of information
+about how current GPUs behave, which makes the feasibility of adopting a specification unclear.
+To investigate this, we conduct a large-scale empirical study across real-world devices (Sec. 7). We
+generalize our direct model tests across different memory access patterns, yielding 10 base tests. To
+test for behaviors introduced by compiler transformations, we apply a semantics-preserving fuzzer
+to each test [13], generating 100k fuzzed tests, which run on ten GPUs spanning eight vendors.
+We observe that most GPUs exhibit strongly synchronous subgroup behavior across our tests. We
+performed detailed follow-up investigation on the rare non-synchronous behaviors, but were unable
+to conclusively determine whether they reflect intentional behavior or unintended anomalies. A
+clear exception is that nearly all GPUs donottreat memory operations as collective. This behavior
+is illustrated in Fig. 3, where all non-NVIDIA and non-Apple platforms show the non-collective
+outcome. This observation is noteworthy because there exist subgroup-elect idioms (e.g., from [38])
+that rely on collective memory operations.
+Scope and Limitations.This work focuses on intra-subgroup behavior; however, we believe our
+semantics compose straightforwardly across scopes, e.g., by instantiating each rule per subgroup.
+To separate execution behavior from memory effects, we assume a sequentially consistent (SC)
+memory model for most of this paper. However, real GPU programming languages have relaxed
+memory models, and some, such as SPIR-V, do not support SC. To account for this, Sec. 4.5 discusses
+extending SIMT-Step with release/acquire memory operations based on [47], and how our examples
+change under these semantics. Future work includes extending SIMT-Step toward more complete
+relaxed memory models, for example following works such as [23, 42], and integrating it into GPU
+verification frameworks [36] as a formal account of subgroup execution semantics.
+Initial:int *loc = 0;
+1atomicStore ( loc , tid ) ;
+2int read = atomicLoad ( loc ) ;
+3assert ( s ubgroupA llEqual ( read ) ) ;
+Allowed behaviors
+Collective Memory:assertion passes
+Non-collective Memory:assertion fails
+Fig. 3. This test is executed by
+many threads across subgroups. Each
+writes their unique id to loc and
+then reads from theloc. Under collec-
+tive memory, all threads within the
+subgroup will read the same value.
+Otherwise, the load can return differ-
+ent values to different threads in the
+subgroup. The subgroupAllEqual
+checks if the arguments across all
+threads are all equal.
+Although we utilize many components and syntax from SPIR-
+V and rely on some of its control flow properties (see Sec. 2.2),
+SIMT-Step is designed to be general. Similarly, although our
+semantics utilize SPIR-V instructions, we make no claim of
+being an official formalization of SPIR-V. We note that CUDA
+does not provide the structured control flow or merge prop-
+erties that SIMT-Step requires. Thus, general CUDA cannot
+be modeled using SIMT-Step; however, there are likely prag-
+matic subsets that could be targeted. We also note that CUDA’s
+independent thread scheduler (Volta onward) [ 46], which is
+documented to significantly relax warp behaviors, still exhibits
+synchronous behaviors on NVIDIA devices. Nevertheless, spec-
+ifications like this indicate a growing interest in more relaxed
+execution models.
+While SIMT-Step supports loops (as they appear in SPIR-V),
+their semantics require additional bookkeeping compared to
+conditionals. These mechanisms are encoded precisely in our
+TLA+ semantics, where the dynamic block stack and merge
+rules handle per-iteration control flow. To keep the presentation
+accessible, the main paper text focuses on control flow encoded by conditionals.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:6 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+Contributions.In summary, our contributions are:
+• We introduceSIMT-Step, a flexible operational semantics for subgroup behavior in GPU
+programming languages. It is built around a new semantic object, the dynamic block (Sec. 3),
+and can support varying degrees of independent, synchronous, and collective execution.
+• We define a range of SIMT-Step models, ranging from fully lockstep to symbolic execution
+(Sec. 4). We verify the behavior of a pragmatic subset of the models using TLA+ (Sec. 5).
+• To understand real-world behaviors, we conduct a large empirical study. The tested platforms
+largely showed strongly synchronous behavior, although we also observed rare violations of
+lockstep execution whose root causes we were unable to determine (Sec. 7).
+2 Background
+2.1 GPU Architecture and Programming Models
+GPUs are high-throughput, massively parallel accelerators composed of manycompute units(CUs),
+calledstreaming multiprocessorsby NVIDIA. Each CU contains many lightweightprocessing elements
+(PEs) that execute instructions in parallel. The corresponding programming model is also organized
+hierarchically:threadsexecute instructions on a PE. Threads are grouped intosubgroups(warpsin
+CUDA), which typically contain 16–128 threads depending on the architecture. Multiple subgroups
+that execute on a single CU form aworkgroup, and all workgroups together constitute thegrid.
+Within a subgroup, threads execute according to theSIMT(Single Instruction, Multiple Threads)
+model. Conceptually, all these threads follow the same instruction stream and typically execute
+instructions together. When control-flow differs among threads, the subgroupdiverges, some threads
+take one branch while others take another, and laterreconverge(or merge) to resume joint execution.
+The exact rules governing divergence and reconvergence are crucial for reasoning about both
+performance and correctness, as they determine when threads efficiently execute together (and
+participate in subgroup operations) or when they may execute separately, as discussed in Sec. 2.2.
+GPU programming frameworks expose this hardware hierarchy through low-level APIs designed
+for high-performance computing. These includeCUDA[ 44],DirectX[ 41],Vulkan[ 27], andMetal[ 3],
+each providing different dimensions of portability. We use Vulkan terminology in this work, except
+where more familiar terms (e.g., thread vs. invocation) improve presentation. Shading languages are
+used to write programs that execute on the GPU. They follow a data-parallel model, where an entry
+function is dispatched across many threads, each with a unique identifier within the execution
+hierarchy for indexing and data access. Different frameworks pair with different shading or kernel
+languages: CUDA uses CUDA C++ (and PTX as an IR), Vulkan uses SPIR-V IR, DirectX uses HLSL,
+and Metal provides the Metal Shading Language.
+Subgroup Operations and Semantics.Modern GPU languages expose a variety of highly efficient
+subgroup operations, which operate across a subgroup. These operations typically take an argument
+from each active thread and perform reductions, broadcasts, shuffles, and ballots. While these
+operations arecollective, they can be specified to benon-uniform: not all threads in a subgroup are
+required to participate. This work focuses on these non-uniform variants. Language specifications
+typically leave the participating set loosely defined, with the intuition that only threads reaching
+the operation, i.e., via the same control flow path, take part. However, these properties have never
+been formally modeled.
+Classically, subgroup execution models have also included various implicit synchronization
+behavior. It remains unclear whether operations like memory accesses or branches enforce any
+synchronization among threads. Earlier documentation hinted at implicit synchronization, but this
+documentation has been omitted or revised in many current specs.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:7
+Table 2. SPIR-V instructions used in the paper
+Instruction Description
+Subgroup Operation
+OpGroupAdd Returns the sum of values provided by
+all active threads
+OpGroupAllEqual Return true if the provided values from
+all participating threads are equal
+OpGroupBroadcast Broadcasts a value from one specified
+participating thread to all others
+Label Instructions
+OpLabel Marks the beginning of a basic block
+with a unique ID
+Block Terminating Instructions
+OpBranch Unconditional branch to another label
+OpBranchCond Conditional branch based on a boolean
+OpReturnReturn from a function/shader
+Merge Instructions
+OpSelectionMerge Declares the merge block for a condi-
+tional construct
+CUDA warp operations take an explicit
+mask, but this does not eliminate the is-
+sue because the mask is often derived from
+__activemask, which itself reflects the ac-
+tive threads.
+SPIR-V.SIMT-Step is implemented us-
+ing a subset of SPIR-V, a low-level SSA-
+based IR that targets a wide range of GPUs.
+We present most examples in GLSL for
+readability, and Tab. 2 lists the SPIR-V in-
+structions used most often in the paper.
+2.2 Structured Control
+Flow and Maximal Reconvergence
+SIMT-Step relies on two key features, both
+provided by SPIR-V: structured control
+flow andmaximal reconvergence, which
+dictates how threads merge after diver-
+gence. As a target language, SPIR-V re-
+quires source shading language to support
+these properties to generate valid code.
+1% entry = OpLabel
+2OpSelect ionMerge % merge
+3O p B r a n c h C o n d i t i o n a l % c % then % else
+4
+5% then = OpLabel
+6; computation
+7OpBranch % merge
+8
+9% else = OpLabel
+10; computation
+11OpBranch % merge
+12
+13% merge = OpLabel
+14% res = OpGroupAll % arg
+%entry
+%then %else
+%merge
+true false
+Fig. 4. An example of control flow in SPIR-V
+and the resulting control flow graph
+Structured Control Flow.SPIR-V basic blocks be-
+gin with OpLabel and end with a terminator such
+as OpBranch. A branch instruction is preceded by a
+merge instruction, such as OpSelectionMerge, which
+names the reconvergence block. Fig. 4 shows an
+if-then-elseexample and its control-flow graph.
+Fig. 4 illustrates a simple if-then-else construct
+in SPIR-V alongside its control flow graph. For clarity,
+some instructions are simplified, without changing
+semantics. Each basic block begins with a static in-
+struction OpLabel (blue) assigning a unique ID and
+ends with a terminator (red). When a block branches to
+multiple successors, e.g., %entry to %then and %else,
+SPIR-V requires a merge instruction to specify the
+reconvergence point. Unstructured control flow (e.g.,
+goto) is disallowed; all control flow must be statically
+nested and explicitly merged.
+Maximal Reconvergence.SPIR-V specifies a model
+for handling divergent control flow known asmaximal
+reconvergence[ 25]. Under this model, all subgroup
+threads that execute a merge instruction reconverge the first time they reach the merge target.
+Thus, in Fig. 4, an OpGroupAdd in the merge block executes over the same threads that executed
+%entry.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:8 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+3 SIMT-Step Foundations: Dynamic Blocks
+We build on standard operational semantics, where a program execution 𝐸 is a sequence ofatomic
+steps. Each step corresponds to a static instruction execution, called adynamic instancein SPIR-
+V [18], denoted 𝑖. An execution is a sequence of such instances: 𝐸=𝑖 0 →𝑖 1 →. . . . In a concurrent
+program, 𝐸 interleaves dynamic instances from all threads, subject to synchronization constraints.
+We write𝐸 𝑡 for the projection of𝐸to thread𝑡, and𝑖 𝑡 when instance𝑖is executed by𝑡.
+Dynamic blocks extend the notion of dynamic instances to basic blocks. A static basic block 𝑏,
+when executed, produces a dynamic block instance 𝑑𝑏. Multiple threads may execute the same
+dynamic block, which captures convergent thread execution. An execution 𝐸 is now associated
+with a dynamic execution graph 𝐷, which records the dynamic blocks executed across all threads.
+A control flow graph ( 𝐶𝐹𝐺 ) can be straightforwardly produced from SPIR-V code given its
+structured control flow. Each node in a 𝐶𝐹𝐺 corresponds to a basic block 𝑏, which contains the
+following components:
+•Block Label(𝑏.𝑙𝑎𝑏𝑒𝑙): A unique label provided by the code.
+•Children(𝑏.𝐶): The immediate children𝑏in the𝐶𝐹𝐺.
+• Merge Block( 𝑏.𝑚𝑒𝑟𝑔𝑒 ): If 𝑏 has multiple children, then it must specify the basic block where
+the children merge.
+A dynamic block𝑑𝑏extends a basic block with the following:
+•Basic Block(𝑑𝑏.𝑏): The associated static basic block.
+•ID(𝑑𝑏.𝑖𝑑): A unique ID as there can be multiple dynamic blocks for a given basic block.
+• Threads( 𝑑𝑏.T ): The set of all threads that execute 𝑑𝑏. To ease presentation, we will assume
+that all threads in 𝑑𝑏.T belong to the same subgroup. If more threads are executing the
+kernel, then they can simply be partitioned into disjoint sets based on their subgroup.
+•Children(𝑑𝑏.𝐶): The children dynamic blocks of𝑑𝑏in the dynamic execution graph.
+• Dynamic Block Merge Target( 𝑑𝑏.𝑚𝑒𝑟𝑔𝑒 ): If 𝑑𝑏.𝑏 has a merge instruction, then this is the
+dynamic block where𝑑𝑏.Twill reconverge after any potential divergence.
+Each dynamic block 𝑑𝑏 must align with the structure of its corresponding basic block (𝑑𝑏.𝑏 ) in
+the 𝐶𝐹𝐺 . For example, the basic blocks of the dynamic children of 𝑑𝑏 must correspond to basic
+children of𝑑𝑏.𝑏. The same condition applies to the merge relationships.
+Convergence and Divergence.The dynamic execution graph tracks converged execution through
+the Threads (T ) set for each dynamic block. The following rules dictate constraints on this set and
+on the dynamic execution graph structure.
+• Initial: There exists a single initial dynamic block 𝑑𝑏0 corresponding to the first basic block
+in the shader:𝑑𝑏 0.Tcontains all the threads.
+•No spurious divergence: Once a thread starts executing a dynamic block, it will continue
+executing the same dynamic block until a block terminating instruction.
+• Branching: If two threads are executing the same dynamic block and then branch to the
+same basic block, they must also branch to the same dynamic block.
+• Reconvergence: If 𝑑𝑏 contains a merge block (𝑑𝑏.𝑚𝑒𝑟𝑔𝑒 ), then there must exist 𝑑𝑏 ′ later
+in the execution that is associated with 𝑑𝑏.𝑚𝑒𝑟𝑔𝑒 , which is executed by the same thread set
+T . Furthermore, there mustnotexist another 𝑑𝑏 ′′ such that (1) 𝑑𝑏 ′′ lies in the execution
+sequence between 𝑑𝑏 and 𝑑𝑏 ′; and (2) 𝑑𝑏 ′′’s associated basic block is the merge target of𝑑𝑏.
+Intuitively, this states that threads must reconverge at a merge block as early as possible.
+This property captures the maximal reconvergence [25].
+•Non repeating: A thread𝑡cannot execute the same dynamic basic block twice.
+•Acyclic: The dynamic execution graph must be acyclic.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:9
+1for ( int i = 0; i < 3; i ++) {
+2// loop block
+3if ( tid == i || i == 2) {
+4// cond block
+5subgroupOp (...) ;
+6}
+7}
+id:𝑑𝑏 0
+𝑏:intial
+T:{0,1}
+id:𝑑𝑏 1
+𝑏:loop
+𝑚𝑒𝑟𝑔𝑒:𝑑𝑏 3
+T:{0,1}
+id:𝑑𝑏 2
+𝑏:cond
+T:{0}
+id:𝑑𝑏 3
+𝑏:loop
+𝑚𝑒𝑟𝑔𝑒:𝑑𝑏 5
+T:{0,1}
+id:𝑑𝑏 4
+𝑏:cond
+T:{1}
+id:𝑑𝑏 5
+𝑏:loop
+𝑚𝑒𝑟𝑔𝑒:𝑑𝑏 7
+T:{0,1}
+id:𝑑𝑏 6
+𝑏:cond
+T:{0,1}
+id:𝑑𝑏 7
+𝑏:final
+T:{0,1}
+Fig. 5. An example program
+where a subgroup operation is
+executed conditionally within
+a loop. The dynamic execution
+graph illustrates how threads di-
+verge and reconverge.
+These rules allow the dynamic block thread set ( T ) to specify
+which threads are converged in 𝑑𝑏, and thus, if a subgroup oper-
+ation appears in 𝑑𝑏, it must be executed by all threads in 𝑑𝑏.T .
+Although this work focuses on subgroups, it can naturally support
+the more common workgroup-level barrier semantics. The textual
+alignment requirement of workgroup barriers [ 22, 34] seems to
+correspond with dynamic basic blocks, although with stronger
+uniformity requirements than subgroup operations. That is, a 𝑑𝑏
+containing a workgroup barrier must be executed by (and thus
+synchronizes across) all threads in the workgroup, otherwise it is
+undefined behavior.
+Example.Figure 5 shows a GLSL loop containing a conditional
+with a subgroup operation inside. The conditional is non-uniform
+and may split the subgroup. The dynamic execution graph below
+approximates basic blocks from the high-level code (a SPIR-V ver-
+sion would be more precise but more complex). For example, the
+cond dynamic blocks (𝑑𝑏2, 𝑑𝑏4, and 𝑑𝑏6) are shown as one dynamic
+block when they would actually be separate blocks for the selection
+header, conditional body, and merge block of the conditional. We
+assume the program is executed with two threads, with tid values
+of 0 and 1, both in the same subgroup.
+The execution begins with both threads in the initial dynamic
+block (𝑑𝑏0), as noted by T . Both threads then enter the first loop
+iteration block (𝑑𝑏1) where i = 0 . This dynamic block diverges
+depending on the conditional, but the threads must reconverge at
+the next loop iteration (𝑑𝑏3). The conditional splits the subgroup,
+with thread 0 executing the conditional block ( 𝑑𝑏2). This block
+contains a subgroup operation. Given the above rules, this subgroup
+operation is only executed by thread 0, as it is the sole thread
+in T for (𝑑𝑏2). Similarly, in the next loop iteration ( i = 1 ), the
+next conditional block 𝑑𝑏4 is executed only by thread 1, and its
+constituent subgroup operation is only executed by thread 1. Because the dynamic execution graph
+must be acyclic, 𝑑𝑏2 and 𝑑𝑏4 must be disjoint dynamic blocks, and thus it is guaranteed that the
+first two iterations of the loop must execute two distinct instances of the subgroup operation with
+thread 0 and thread 1 as the participating threads, respectively. Merging them is not allowed. In
+the third and final loop iteration, i = 2 , the conditional is true for both threads, so both threads
+execute 𝑑𝑏6, and thus both participate in the subgroup operation execution before proceeding to
+the final block𝑑𝑏 7.
+Limitations: Escaping Merge Targets.We assume that given a dynamic block 𝑑𝑏 with a merge
+block 𝑑𝑏.𝑚𝑒𝑟𝑔𝑒 , they must both have the same thread set, i.e., 𝑑𝑏.T=𝑑𝑏.𝑚𝑒𝑟𝑔𝑒.T . However,
+SPIR-V provides an exception to this condition: a thread can terminate before executing the merge
+target. We have explored candidate semantics under these conditions in our TLA+ implementation,
+but more work is needed to understand the impact of such behaviors.
+4 SIMT-Step Operational Semantics for Subgroup Behavior
+Utilizing dynamic blocks, we can design a flexible operational semantics for subgroup execution.
+We will reference the models of Tab. 1 and detail how they are instantiated. For simplicity, we
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:10 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+Table 3. Components of the SIMT-Step system state.
+Name Definition Description
+𝜎𝑡 ≜⟨𝑝𝑐 𝑡 , 𝑑𝑏 𝑡 , 𝑅 𝑡 ⟩ Thread state: the program counter, current dynamic block, and register file for thread𝑡.
+Σ≜⟨𝜎 0, 𝜎 1, . . . , 𝜎 𝑛−1 ⟩Group state: tuple of thread states in a subgroup of size𝑛.
+M:𝑎↦→𝑣Global memory mapping each address𝑎to a value𝑣.
+D={db 0, . . . ,db 𝑛 }Set of dynamic blocks forming the dynamic execution graph.
+State≜⟨M,Σ,D⟩Full SIMT-Step system state.
+restrict our semantics to a single subgroup unless explicitly stated otherwise. Extending to arbitrary
+grid configurations involves partitioning T for each dynamic block, which is supported in our
+TLA+ implementation. Our semantics adopt the style of TLA+, including using guarded transition
+systems and the ability to construct semantic objects, such as dynamic blocks, during execution.
+The language shown in Fig. 6 defines a single shader function 𝑓 composed of at least one
+basic block 𝐵. Each basic block begins with a label instruction, followed by zero or more normal
+(𝑁 ) instructions, an optional 𝑀𝑒𝑟𝑔𝑒 instruction, and ends with a block terminator 𝑇 𝑒𝑟𝑚. The
+standard instructions we model include (sequentially consistent atomic) memory loads and stores,
+subgroup operations, and an abstract thread-local Local instruction. The subgroup operation takes
+an additional 𝑜𝑝 argument that specifies its operation, e.g., add. The instructions are (statically)
+partitioned into the following sets: labels ( Label), block-terminating instructions (Term), merge
+instructions (Merge), and normal instructions (𝑁), as defined in Fig. 6.
+tid∈ {0, . . . , 𝑛−1}Thread IDs
+ℓ∈𝐿𝑎𝑏𝑒𝑙Basic block labels
+𝑎∈𝐴𝑑𝑑𝑟Memory addresses
+𝑟∈𝑅𝑒𝑔Thread-local registers
+𝑣∈𝑉 𝑎𝑙Values (e.g., integers)
+𝑆::= shader𝑓{𝐵 + }A shader function𝑓
+𝐵::=Label;𝑁 ∗ ;Merge?;𝑇 𝑒𝑟𝑚A basic block
+Label::= label(ℓ) A label instruction
+𝑁::= Normal instructions
+Load𝑟←𝑎Load from memory
+|Store𝑎←OperandStore to memory
+|𝑟←SG_op(op,Operand)Subgroup operation
+|Local(Operand ∗ )An abstract local instr.
+𝑇 𝑒𝑟𝑚::= Terminating instruction
+branch(ℓ) Unconditional branch
+|branchCond(Operand,ℓ 1,ℓ 2) Conditional branch
+𝑀𝑒𝑟𝑔𝑒::= selectionMerge(ℓ) Merge instruction
+Operand::=𝑟|𝑣A value or register
+Fig. 6. The syntax for a simple GPU shader language (similar
+to SPIR-V) which we build our operational semantics for.
+State and Initialization.The system
+state shown in Tab. 3 captures three lev-
+els: individual thread state ( 𝜎), group
+thread state ( Σ), and shared state, in-
+cluding memory 𝑀 and dynamic blocks
+𝐷.
+We extend the dynamic block defi-
+nition from Sec. 3 with three auxiliary
+fields: 𝑚𝑠 is a stack of dynamic block
+ids, which is used to manage recon-
+vergence in the merge block. Each dy-
+namic block maintains its own merge
+stack (𝑑𝑏.𝑚𝑠), where the top element
+can be accessed via the 𝑡𝑜𝑝 . The stack
+records dynamic blocks that were des-
+ignated as merge targets by previously
+executed control flow. 𝑠𝑖𝑠 is a dictio-
+nary mapping each static synchronous
+instruction in 𝑑𝑏.𝑏 to a Boolean value
+indicating whether the subgroup is cur-
+rently synchronized at that instruction.
+Unknown threads (𝑈) track threads for which it is unknown whether they will be active in𝑑𝑏.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:11
+The initial state for a specific shader program𝑆is:
+entry:=label of the entry basic block of𝑆
+𝑑𝑏0 :=⟨𝑖𝑑=0, 𝑏=entry, 𝐶=∅, 𝑚𝑒𝑟𝑔𝑒=none, 𝑚𝑠=[],
+𝑠𝑖𝑠=[𝐼↦→𝐹𝑎𝑙𝑠𝑒|𝐼∈𝑆𝑦𝑛𝑐𝐼𝑛𝑠𝑡𝑟(𝑒𝑛𝑡𝑟𝑦) ],T=𝐴𝑙𝑙𝑇 ℎ𝑟𝑒𝑎𝑑𝑠, 𝑈=∅⟩
+Σ(𝑡):=⟨𝑝𝑐=𝑝𝑐(entry), 𝑑𝑏=𝑑𝑏 0, 𝑅=𝑅 0(𝑡)⟩ ∀𝑡∈𝑑𝑏 0.𝑇
+𝑀:=𝑀 0 (initial global memory, from host inputs)
+𝐷:={𝑑𝑏 0}
+The entry dynamic block 𝑑𝑏0 corresponds to the entry basic block of 𝑆. Each thread 𝑡 begins with
+its program counter at the entry label, an empty merge stack, and register state 𝑅0(𝑡) . We use 𝜎 to
+denote a single thread state. Given a group state Σ=⟨𝜎 0, 𝜎1, 𝜎2,· · ·, 𝜎𝑛−1 ⟩, we use Σ(𝑖) to denote
+𝜎𝑖, and 𝑛 is the subgroup size. The initial memory 𝑀0 is provided by the host and shared among
+all threads. SyncInstr(𝑏) is the set of synchronous instructions in the basic block 𝑒𝑛𝑡𝑟𝑦 (which is
+flexible depending on the intended semantics), and𝐴𝑙𝑙𝑇 ℎ𝑟𝑒𝑎𝑑𝑠is the thread IDs of all threads.
+Transition Rules.We provide two types of transition rules, first a single-thread transition rule
+with the signature:
+→𝑡 ⊆ (𝑇 ℎ𝑟𝑒𝑎𝑑𝑆𝑡𝑎𝑡𝑒×𝑀×𝐷) × (𝑇 ℎ𝑟𝑒𝑎𝑑𝑆𝑡𝑎𝑡𝑒×𝑀×𝐷).
+These rules operate on a single thread state 𝜎, possibly updating the group state of memory
+(through memory operations) or the set of dynamic blocks (through branching). These single-
+thread transitions define the smallest step relation governing individual thread behavior. At a wider
+scope, thegroup transition rulesexecute instructions collectively and have the following signature:
+→𝑔 ⊆ (𝐺𝑟𝑜𝑢𝑝𝑆𝑡𝑎𝑡𝑒×𝑀×𝐷) × (𝐺𝑟𝑜𝑢𝑝𝑆𝑡𝑎𝑡𝑒×𝑀×𝐷).
+In this case, execution operates atomically across all active threads in the subgroup. These rules
+can update all thread local states, memory, and the set of dynamic blocks. We will utilize the guard
+𝐴𝑙𝑖𝑔𝑛(𝑝𝑐, 𝑑𝑏) , which checks whether all threads in the dynamic block 𝑑𝑏 are aligned at the same
+program counter𝑝𝑐.
+Modes of Instruction Execution.SIMT-Step can be instantiated in several ways to account for a
+variety of subgroup behaviors, including the models in Tab. 1. These different instantiations are
+realized by statically partitioning instructions into three sets: (1)independent: these instructions
+execute independently, as in traditional concurrency semantics; (2)synchronous: these instructions
+require all active threads to align on the instruction, but do not execute the instruction atomically;
+and (3)collective: these instructions synchronizeandexecute atomically across the active threads.
+The supplementary material provides a comprehensive table detailing the execution mode of each
+instruction class under the various SIMT-Step semantics model.
+Auxiliary Functions.There are several auxiliary functions throughout that we will describe in
+the text, such as operand evaluation, local instruction execution, and dynamic block creation and
+retrieval. Their formal definitions and implementations are provided in the supplementary material.
+4.1 Executing Within a Dynamic Block
+We begin with instructions internal to a basic block, i.e., instructions that are not labels or branches.
+These are straightforward to execute because they do not require reasoning about divergence.
+Several variants are summarized in Fig. 7 and described below.
+The most relaxed way that these instructions can be executed is independently, and correspond
+to the rulesT-Local,T-Load, andT-Store. For the abstract local instruction inT-Local, the
+instruction is evaluated by the auxiliary functionExec, producing an updated register file 𝑅′, after
+which the thread advances its program counter by one.T-LoadandT-Storefollow the same pattern
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:12 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+𝐼 [𝜎 .𝑝𝑐] =𝐿𝑜𝑐𝑎𝑙(𝑂𝑝𝑒𝑟𝑎𝑛𝑑)𝑅 ′ =𝐸𝑥𝑒𝑐(𝐼 [𝜎 .𝑝𝑐] , 𝜎 .𝑅)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎[𝑝𝑐:=𝑝𝑐+1, 𝑅:=𝑅 ′ ], 𝑀, 𝐷⟩
+(T-Local)
+𝐼 [𝜎 .𝑝𝑐] =𝐿𝑜𝑎𝑑 𝑟←𝑎 𝑣=𝑀(𝑎)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎[𝑝𝑐:=𝑝𝑐+1, 𝑅:=𝑅[𝑟↦→𝑣] ], 𝑀, 𝐷⟩
+(T-Load)
+𝐼 [𝜎 .𝑝𝑐] =𝑆𝑡𝑜𝑟𝑒 𝑎←𝑂𝑝𝑒𝑟𝑎𝑛𝑑 𝑣=𝑒𝑣𝑎𝑙(𝑂𝑝𝑒𝑟𝑎𝑛𝑑, 𝜎 .𝑅)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎[𝑝𝑐:=𝑝𝑐+1], 𝑀[𝑎↦→𝑣], 𝐷⟩
+(T-Store)
+∃𝑑𝑏∈𝐷 𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎, 𝑀, 𝐷[𝑑𝑏.𝑠𝑖𝑠[𝐼 [𝜎 .𝑝𝑐] ]:=𝑇 𝑟𝑢𝑒] ⟩
+(T-Sync-Arrive)
+𝜎 .𝑑𝑏.𝑠𝑖𝑠[𝐼 [𝜎 .𝑝𝑐] ]=𝑇 𝑟𝑢𝑒⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎′, 𝑀′, 𝐷′ ⟩
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎‘, 𝑀′, 𝐷′ [𝑑𝑏.𝑠𝑖𝑠[𝐼 [𝜎 .𝑝𝑐] ]:=𝐹 𝑎𝑙𝑠𝑒] ⟩
+(T-Sync-Execute)
+∃𝑑𝑏∈𝐷(𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ) ∧ ∀𝑖∈𝑑 .TΣ(𝑖)
+𝑡
+− →Σ′ (𝑖) )
+⟨Σ, 𝑀, 𝐷⟩
+𝑔
+− → ⟨Σ′, 𝑀, 𝐷⟩
+(G–Collective-Local)
+∃𝑑𝑏∈𝐷(𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ) ∧ ∀𝑖∈𝑑𝑏.T𝐼=𝐼 [Σ(𝑖).𝑝𝑐] ∧
+(𝑀 ′,{𝑅 ′
+𝑢 }𝑢∈𝑑𝑏.T )=𝐸𝑥𝑒𝑐𝑆𝐺(𝑑𝑏.T, 𝐼,{Σ(𝑢).𝑅} 𝑢∈𝑑𝑏.T , 𝑀) ∧
+∀𝑢∈𝑑𝑏.TΣ ′ (𝑢)=Σ(𝑢) [𝑅:=𝑅 ′
+𝑢 ] )
+⟨Σ, 𝑀, 𝐷⟩
+𝑔
+− → ⟨Σ′, 𝑀′, 𝐷⟩
+(G–Collective-Subgroup)
+∃𝑑𝑏∈𝐷(𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ) ∧ ∀𝑖∈𝑑𝑏.T𝐼=𝐼 [Σ(𝑖).𝑝𝑐] ∧
+(𝑀 ′,{𝑅 ′
+𝑢 }𝑢∈𝑑𝑏.T ) ∈𝐸𝑥𝑒𝑐𝑀𝑒𝑚 𝑐𝑜𝑙𝑙𝑒𝑐𝑡𝑖𝑣𝑒 (𝑑𝑏.T, 𝐼,{𝑅 𝑢 }𝑢∈𝑑𝑏.T , 𝑀) ∧
+∀𝑢∈𝑑𝑏.TΣ ′ (𝑢)=Σ(𝑢) [𝑅:=𝑅 ′
+𝑢 ] )
+⟨Σ, 𝑀, 𝐷⟩
+𝑔
+− → ⟨Σ′, 𝑀′, 𝐷⟩
+(G–Collective-Mem)
+Fig. 7. Rules for execution within a basic block.
+but read from and write to global memory, respectively. Allowing memory operations to execute
+independently within a basic block allows some flexible behaviors; for example, the interleaved
+behavior in Fig. 2, becomes possible. In the SIMT-Step models, SCF and weaker models permits
+independent execution around memory operations.
+Synchronous.It may be desirable to strengthen the semantics within a basic block. To this end,
+we allow instructions to be defined as synchronous. These semantics are implemented in two
+steps. First,T-Sync-Arrivefires once all threads are aligned on the instruction, as indicated by
+the guard ∃𝑑𝑏∈𝐷(𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ)) , which selects a dynamic block in which all active threads
+share the same program counter. This triggers an update to the synchronous-instruction status in
+the dynamic block (𝑑𝑏.𝑠𝑖𝑠 ), setting the entry for the synchronous instruction toTrue. Once this
+status is set, threads proceed with theT-Sync-Executestep, where each thread may take a step
+individually according to the thread-local semantics (
+𝑡
+− →). Our SIMT-Step model SM instantiates
+memory operations as synchronous.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:13
+Collective.Instructions can further be strengthened to execute collectively, by taking acollective
+step, defined by the (G-Collective) rules. These rules apply when all active threads in a dynamic
+block are aligned at the same instruction. In this case, the instruction is executed atomically across
+the threads, and its semantics (
+𝑔
+− →) are defined over the group state rather than an individual thread.
+Intuitively, once all the active threads in a dynamic block reach the same instruction, they execute
+it together as a single group-level operation.G-Collective-Localis the group version ofT-Local.
+Once threads are aligned, each can take the corresponding thread-local step, and the group-level
+transition updates the thread states to the resulting Σ′.G-Collective-Subgroupdefines collective
+subgroup operation. The equality 𝐼=𝐼 Σ(𝑖).𝑝𝑐 extracts the static instruction at the aligned 𝑝𝑐. The
+term 𝐸𝑥𝑒𝑐𝑆𝐺 applies the subgroup semantics, producing updated memory and per-thread register
+values. For example, if 𝐼 issubgroupAdd, 𝐸𝑥𝑒𝑐𝑆𝐺 sums the input values provided by all active
+threads and returns the result to each thread. The conclusion distributes these register updates to
+each thread and performs a single group-level transition to(Σ ′, 𝑀′).
+G-Collective-Memhandles collective memory operations. 𝐸𝑥𝑒𝑐𝑀𝑒𝑚 collective invokes the collec-
+tive memory semantics: given the active thread set, the instruction, their registers, and the global
+memory, it returns a set of possible outcomes representing the nondeterminism of concurrent
+memory effects when threads write to the same address. The operational rule chooses one such
+outcome (𝑀 ′,{𝑅 ′
+𝑢 }𝑢∈𝑑𝑏.T ) and applies it. The premise ∀𝑢∈𝑑𝑏.TΣ ′ (𝑢)=Σ(𝑢) [𝑅 :=𝑅 ′
+𝑢] updates
+each thread’s registers with the values produced by the selected result.
+𝐼 [𝜎 .𝑝𝑐] =𝑏𝑟𝑎𝑛𝑐ℎ(ℓ)
+(𝑑𝑏 ′, 𝐷′ )=𝑔𝑒𝑡_𝑐ℎ𝑖𝑙𝑑(𝜎 .𝑑𝑏, ℓ, 𝜎 .𝑑𝑏.T, 𝐷)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎[𝑝𝑐:=𝑑𝑏 ′.𝑏, 𝑑𝑏:=𝑑𝑏 ′ ], 𝑀, 𝐷 ′ ⟩
+(T-Ubranch)
+𝐼 [𝜎 .𝑝𝑐] =𝑏𝑟𝑎𝑛𝑐ℎ𝐶𝑜𝑛𝑑(𝑐, ℓ 𝑡 , ℓ𝑓 )𝑏=𝑒𝑣𝑎𝑙(𝑐, 𝜎 .𝑅)
+(𝑑𝑏 ′, 𝐷′ )=𝑔𝑒𝑡_𝑐ℎ𝑖𝑙𝑑(𝜎 .𝑑𝑏,(𝑏?ℓ 𝑡 :ℓ 𝑓 ), 𝜎 .𝑑𝑏.T, 𝐷)
+⟨𝜎, 𝑀, 𝐷⟩
+𝑡
+− → ⟨𝜎[𝑝𝑐:=𝑑𝑏 ′.𝑏, 𝑑𝑏:=𝑑𝑏 ′ ], 𝑀, 𝐷 ′ ⟩
+(T-Cbranch)
+∃𝑑𝑏∈𝐷(𝐴𝑙𝑖𝑔𝑛(𝑑𝑏,Σ) ∧
+∀𝑖∈𝑑𝑏.T𝐼 [Σ(𝑖).𝑝𝑐] =𝑏𝑟𝑎𝑛𝑐ℎ𝐶𝑜𝑛𝑑(𝑐, ℓ 𝑡 , ℓ𝑓 ) ∧
+(𝑑𝑏𝑡 , 𝐷𝑡 )=𝑔𝑒𝑡_𝑐ℎ𝑖𝑙𝑑(𝑑𝑏, ℓ 𝑡 , 𝑑𝑏.T, 𝐷) ∧
+(𝑑𝑏 𝑓 , 𝐷𝑓 )=𝑔𝑒𝑡_𝑐ℎ𝑖𝑙𝑑(𝑑𝑏, ℓ 𝑓 , 𝑑𝑏.T, 𝐷) ∧
+𝐴𝑡 ={𝑢∈𝑑𝑏.T |𝑒𝑣𝑎𝑙(𝑐, 𝜎 𝑢 .𝑅) }, 𝐴 𝑓 =𝑑𝑏.T \𝐴 𝑡 ∧
+∀𝑢∈𝐴 𝑡 :Σ ′ (𝑢)=Σ(𝑢) [𝑝𝑐:=𝑑𝑏 𝑡 .𝑏, 𝑑𝑏:=𝑑𝑏 𝑡 ] ∧
+∀𝑣∈𝐴 𝑓 :Σ ′ (𝑣)=Σ(𝑣) [𝑝𝑐:=𝑑𝑏 𝑓 .𝑏, 𝑑𝑏:=𝑑𝑏 𝑓 ] )
+⟨Σ, 𝑀, 𝐷⟩
+𝑔
+− → ⟨Σ′, 𝑀, 𝐷𝑡 ∪𝐷 𝑓 ⟩
+(G–Collective-Cbranch)
+Fig. 8. Rules for executing control flow instructions
+In our SIMT-Step models, all direct variants
+(CM, SM, SCF, and SSO) execute subgroup op-
+erations collectively, as non-collective seman-
+tics quickly become complex (see Sec. 4.4). The
+strongest model ( CM) also executes loads col-
+lectively, ensuring threads observe the same
+value when reading the same location. Collec-
+tive store semantics are less clear, but could
+be defined for example, by selecting the value
+from the highest-ID thread. However, some
+GPU models (e.g., CUDA) leave this undefined,
+stating that “which thread performs the final
+write is undefined”[45, §7.1].
+4.2 Collective Control Flow
+We now describe control flow instruction se-
+mantics, which add complexity, as they must
+(1) account for potential divergence and (2) pre-
+pare for reconvergence at merge blocks. It is
+most straightforward to handle if control flow
+operations (branches, labels and merges) are
+executed collectively. That is, collective con-
+trol flow instructions ensure that all threads
+within a dynamic block leave and enter basic blocks together, ensuring that the active thread sets
+for dynamic blocks are known at creation. We show the semantics of the collective conditional
+branch inG-Collective-CBranch(Fig. 8). The unconditional branch is strictly simpler and pro-
+vided in supplemental material along with the label and merge instruction, which are similar to
+G-Collective-Local.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:14 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+InG-Collective-CBranch, once an aligned dynamic block is selected and the branch instruction
+𝑏𝑟𝑎𝑛𝑐ℎ𝐶𝑜𝑛𝑑(𝑐, ℓ 𝑡, ℓ𝑓 ) is identified, the rule callsget_childto obtain the successor dynamic blocks
+𝑑𝑏𝑡 and 𝑑𝑏 𝑓 for the true and false targets.get_childreuses an existing block when the merge stack
+indicates that the successor is the merge block; otherwise it creates a fresh dynamic block and
+inherits the parent’s merge stack. The active threads are then partitioned into𝐴𝑡 and 𝐴𝑓 depending
+on whether they satisfy the branch condition. Threads in 𝐴𝑡 update their program counters to the
+basic block of 𝑑𝑏𝑡 and move into that block; threads in 𝐴𝑓 do the same for 𝑑𝑏 𝑓 . The group-level
+transition
+𝑔
+− →commits these updates and incorporates𝐷𝑡 and𝐷 𝑓 into the dynamic-block set.
+If a thread set diverges to two different dynamic blocks, SIMT-Step conservatively permits the
+most permissive behavior across the two sets: arbitrary interleavings. However, a specification may
+choose to prioritize one divergent path over another, with paths synchronizing at the merge block.
+It would not be difficult to extend SIMT-Step to support such constraints. Indeed, earlier versions
+of the CUDA documentation state that divergent paths are serialized (§4.1[43]).
+Initial:g[0] = 0, g[1] = 0;
+1int main () {
+2int index _a , index _ b ;
+3if ( tid == 0) index _ a = 0; index _ b = 1;
+4if ( tid == 1) index _ a = 1; index _ b = 0;
+5atomicStore (& g [ index _ a ] , 0) ;
+6if ( tid == 0) {
+7( opt .) subgroupAdd (1) ;
+8atomicStore (& g [ index _ b ] , 1) ;
+9} else {
+10( opt .) subgroupAdd (1) ;
+11atomicStore (& g [ index _ b ] , 1) ;
+12}
+13}
+Allowed behaviors
+Synchronized:g[0] == 1 && g[1] == 1 ;
+Relaxed:g[0] == 1 && g[1] == 1 ||
+g[0] == 0 && g[1] == 1 ||
+g[0] == 1 && g[1] == 0 ;
+Fig. 9. An example executed with two
+threads each in the same subgroup, with op-
+tionally included subgroup operations. The al-
+lowed behaviors explore the extent to which
+control flow synchronizes subgroups
+Our SIMT-Step model SCF (along with the stronger
+models) instantiates control flow instructions to be col-
+lective. We note that these semantics require preserving
+the effects of (control) dependencies at the programming
+language level, which has been controversial, e.g., in the
+C++ memory model. However, enforcing synchroniza-
+tion at control flow instructions does not completely pro-
+hibit optimizing away control dependencies; they would
+simply need to be replaced with subgroup synchroniza-
+tion instructions, which are expected to be lightweight
+on current hardware.
+Example.We illustrate collective control flow in
+the two-thread example of Fig. 9. Each thread writes
+to opposite locations ( g[0] and g[1]) in sequence,
+optionally separated by a subgroup operation, e.g.,
+subgroupAdd(1). If branch instructions execute collec-
+tively, both threads must complete the first store before
+leaving the current basic block. They then enter the tar-
+get block together and execute the second store, yield-
+ing thesynchronizedoutcome. We discuss independent
+branch execution next.
+4.3 Independent Branches
+We now explore independent execution of control flow instructions. This first investigation focuses
+on the semantic design space under the following constraints: (1) we utilize an operational semantics;
+(2) we avoid introducing complex mechanisms such as speculative execution or symbolic values;
+and (3) subgroup operations remain collective, since they must combine values across all threads
+in a dynamic block. Under those constraints, we propose the weakest semantics we are able to
+derive. Given its complexity, we outline the formalism here and refer the reader to our TLA+
+implementation for further details.
+Unknown Thread Sets.If threads are allowed to branch in a non-collective manner, e.g.,T-
+UBranchandT-CBranchfrom Fig. 8, then dynamic blocks may not know their complete set of
+executing threads at creation time. That is, a thread 𝑡 could branch out of a dynamic block 𝑑𝑏 and
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:15
+begin executing a new dynamic block 𝑑𝑏 ′, while another thread 𝑡 ′ ∈𝑑𝑏.T may eventually take the
+same branch. However, until 𝑡 ′ takes the branch, it will not appear in 𝑑𝑏 ′.T . To account for this,
+we add anUnknown Thread Setto dynamic blocks 𝑑𝑏.𝑈 to track the set of threads for which it is
+not yet known whether they will execute the block.
+Updating Align.As mentioned earlier, we still execute subgroup operations collectively, e.g., as
+inG-Collective-Subgroupfrom Fig. 7. Given a dynamic block 𝑑𝑏, recall that the function 𝐴𝑙𝑖𝑔𝑛
+ensures that all threads in𝑑𝑏 arrive at the same instruction before allowing the collective operation.
+However, this constraint cannot be satisfied until 𝑑𝑏 knows all of its threads, that is, the unknown
+thread set of𝑑𝑏must be empty. This condition must therefore be added as a constraint to𝐴𝑙𝑖𝑔𝑛.
+Implicit Synchronization.We view the above rules as weakening synchronization as much as
+possible without relying on speculation or symbolic values. However, some implicit synchronization
+remains. We illustrate this with the example in Fig. 9. Under these relaxed semantics, including
+the subgroup operations changes the behavior of the program. This is surprising because each
+subgroup operation collectively involves only a single thread: the operation on line 7 is executed
+only by thread 0, with thread 1 executing the operation on line 10. Due to 𝐴𝑙𝑖𝑔𝑛, threads must wait
+to execute a collective operation until anypotentialparticipating thread has branched to a path
+where it is guaranteed not to execute the collective. Thus, while the collective operations do not
+individually synchronize threads 0 and 1, they are indirectly synchronized through the branch on
+line 6. As a result, even with independent branching, the synchronized behavior is guaranteed when
+subgroup operations are included. In our SIMT-Step models, SSO embodies this behavior. It only
+provides collective operations around subgroup operations, and implements all other relaxations.
+It is shaded lightly red in Tab. 1 to indicate its complex semantics.
+4.4 Further Relaxations
+Initial:int x = 0;
+1int cond = atomicLoad ( x ) ;
+2if ( cond == 0) {
+3subgroupAdd (0) ;
+4atomicStore (& x , 1) ;
+5}
+Allowed subgroup_all participants
+Non-speculative:{0,1}
+Speculative:{0,1}||{1}||{0}
+Fig. 10. A test, executed with two threads in
+the same subgroup, showing the implications
+of collective speculation. Instead of the re-
+sults asking about the final state, it instead
+asks about the allowed participants to the
+subgroup operation. If speculation is allowed,
+then any subset of threads can independently
+execute the collective and then make the block
+unreachable, satisfying the speculation.
+Lastly, we explore additional relaxations through spec-
+ulation and symbolic semantics. Similar to the previous
+section, we find the semantic consequences of such
+relaxations highly complex and likely not useful to
+practitioners. Accordingly, we do not implement either
+model in TLA+. We call these modelsindirectand do
+not explore them beyond high-level tests. However,
+we note they received serious consideration in spec-
+ification group discussions, as they allow incredible
+flexibility in implementations.
+Speculative Subgroup Operations.The semantics we
+have explored so far require all threads in a dynamic
+block to be known and present before executing a sub-
+group operation. However, subgroup operations could,
+in principle, be speculatively executed, assuming that
+the current view of active threads remains valid. That
+is, the subgroup operation proceeds with the threads
+currently in 𝑑𝑏.T under the assumption that no un-
+known threads will later join. If this assumption is later
+violated, the execution is pruned.
+We illustrate the counterintuitive behavior enabled by speculative subgroup operations in Fig. 10.
+This test is executed by two threads in the same subgroup with IDs 0 and 1. The test examines
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:16 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+which threads are allowed to participate in the subgroup operation. Suppose thread 0 reads 0 from
+x, takes the branch, and enters the conditional block. At that point, the dynamic block sees only
+thread 0 as present, with thread 1 marked as unknown. Under speculation, the collective operation
+may proceed, assuming it will only involve thread 0. Thread 0 then stores 1 tox. Later, when thread
+1 executes, it reads 1 from x and does not take the branch, and thus never enters the dynamic block
+containing the collective. In this way, the speculation is validated. This is counterintuitive because
+the speculation effectively justifies itself. While we did not implement it due to the difficulties
+around speculative execution, this specification describes theSpecSIMT-Step execution model.
+This exact test spurred a lengthy discussion (with no resolution) within the specification groups,
+with an internal discussion board having 89 comments from nearly all major GPU vendors. Most
+participants agreed that the behavior was too relaxed, but the flexibility was desirable.
+Symbolic Subgroup Operations.As discussed in Sec. 1, there has been ongoing debate about
+the extent to which compilers should be allowed to optimize by removing subgroup operations.
+While there are clear cases where such operations could be removed (e.g., when the argument is
+a constant), this is not always so obvious. It becomes difficult to constrain the types of analysis
+a compiler might perform to deduce the result of a computation, especially in the presence of
+advanced techniques, e.g., [48].
+Semantically, this could be modeled by relaxing the requirement that subgroup operations
+execute collectively. Instead, each subgroup operation could execute independently and return a
+symbolic value. This symbolic value would be constrained and concretized after all relevant threads
+have completed enough execution.
+Initial:g[0] = 0;
+1int index _a , index _ b ;
+2if ( tid == 0) index _ a = 0; index _ b = 1;
+3if ( tid == 1) index _ a = 1; index _ b = 0;
+4int b = atomicLoad (& g [ index _ a ]) ;
+5int a = su bg rou pB ro ad ca st (b , 0) ;
+6atomicStore (& g [ index _ b ] , a ) ;
+Allowed behaviors
+Symbolic (thin-air):g[0]==𝐴𝑛𝑦
+Fig. 11. A test, executed with two
+threads in the same subgroup, showing
+the thin-air execution that arises when
+allowing non-collective (i.e., symbolic)
+execution of subgroup operations.
+However, allowing symbolic execution introduces thin-
+air behaviors, just as it does in relaxed memory models. We
+illustrate this with the example in Fig. 11. The test involves
+two threads in the same subgroup. Thread 1 first loads an
+arbitrary value fromg[1]. It then executes a subgroup broad-
+cast operation, which attempts to read a valueb from thread
+0. Because thread 0 has not yet executed and initialized this
+value, the subgroup operation returns a symbolic value to
+thread 1, allowing it to proceed without synchronization.
+Thread 1 then stores this symbolic value to g[0]. When
+thread 0 eventually executes, it loads from g[0], receiving
+the symbolic value that originated from thread 1. It then
+broadcasts this symbolic value, which is also stored at g[1].
+At this point, the symbolic value is completely unconstrained
+and may resolve to any value.
+This constitutes a thin-air execution, despite all memory operations being sequentially consistent.
+Such behaviors are generally viewed as problematic and difficult to reason about [21]. Although we
+don’t implement the semantics, the SIMT-Step modelSymb could theoretically execute subgroup
+operations symbolically, following the above description. At this point, there areno morepossible
+relaxations. There are no operations that are executing collectively or synchronously. Thus Symb
+represents the extreme end of independent subgroup execution.
+To the best of our knowledge, thin-air behaviors are primarily a specification concern and have
+not been observed in practice [6]. As a sanity check, we implemented the test in Fig. 11 and evaluated
+it across our devices (detailed in Tab. 5). We observed no out-of-thin-air values. To avoid such
+issues (even at the specification level), one approach is to allow a compiler to replace a subgroup
+operation with a subgroup synchronization barrier, omitting the collective operation.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:17
+4.5 Release/Acquire Relaxed Memory Model Fragment
+We outline SIMT-Step can be extended to support a fragment of relaxed memory, with release
+stores and acquire loads from the C/C++ memory model [5]. GPU languages such as CUDA [35],
+OpenCL [26, §3.3.7], and SPIR-V [24] support this release/acquire ordering. Our discussion follows
+prior operational work on relaxed memory [47], similar to vector-clock reasoning [37]. Even this
+fragment raises additional design questions in the SIMT setting, and a full treatment is left to future
+work. SIMT-Step provides a foundation for exploring these questions.
+State.We define a per-locationhistoryrecording write order to shared memory, mapping each
+address to a sequence of writes. Each thread state 𝜎𝑡 is extended with aviewfront( 𝑣 𝑓 ), mapping
+each address to the latest visible write. The SIMT-Step system memory Memory 𝑀 is replaced by
+an augmented history 𝐻 with entries (𝑣, 𝑣 𝑓𝑤 ), where 𝑣 𝑓𝑤 is the writer’s viewfront, used by acquire
+reads for synchronization.
+Aninitial historymaps each address to a singleton history containing its initial value. Theinitial
+viewfrontmaps each address to this initial history position. In the initial SIMT-Step state, each
+thread-local viewfront 𝜎𝑡 .𝑣 𝑓 is set to the initial viewfront, and the system memory is initialized to
+the augmented history obtained by pairing each initial value with the initial viewfront.
+An important operation on viewfronts is 𝑗𝑜𝑖𝑛 , which takes 𝑛 viewfronts and returns a new
+viewfront 𝑣 𝑓𝑟𝑒𝑠𝑢𝑙𝑡 . For each address 𝑎, 𝑣 𝑓𝑟𝑒𝑠𝑢𝑙𝑡 [𝑎] is the maximum of the corresponding positions in
+the input viewfronts. Intuitively, joining two viewfronts synchronizes their views of memory.
+Independent Memory Operations.We begin with the simplest integration with SIMT-Step seman-
+tics, in which threads execute memory operations independently (e.g.,T-LoadandT-Store). These
+semantics closely mirror the prior operational semantics for release/acquire memory [47] and only
+require updates to two rules:
+•(T-Store-RA): replaces(T-Store); instead of updating𝑀, append(𝑣, 𝜎 .𝑣 𝑓)to𝐻[𝑎].
+• (T-Load-RA): replaces(T-Load). Instead of reading the value stored at address 𝑎 in 𝑀, it may
+read any entry in 𝐻[𝑎] whose position is at or after𝜎 .𝑣 𝑓[𝑎] . If the selected entry is (𝑣, 𝜎 ′.𝑣 𝑓) ,
+the load returns𝑣and updates𝜎 .𝑣 𝑓to𝑗𝑜𝑖𝑛(𝜎 .𝑣 𝑓 , 𝜎 ′.𝑣 𝑓).
+Intuitively, a release stores the issuing thread’s viewfront in the history, and an acquire read
+synchronizes with that write by joining its viewfront with the one in the selected history entry.
+Collective Operations.Integrating relaxed memory with collective execution in SIMT-Step intro-
+duces additional design choices. In the independent case, each thread performs loads and stores
+using its own viewfront. In contrast, a collective step may advance multiple participating threads
+together, raising the question of how their viewfronts should interact during the operation. This
+applies both to subgroup operations (e.g., subgroupAdd) and, in SIMT-Step CM model. We outline
+three candidate designs that augment any(G-Collective)rule:
+• Synchronize completelyBefore executing the collective operation, all participating threads
+join their viewfronts. Intuitively, the collective acts as a synchronization point for memory
+views.This design is simple, but may be too strong, especially for collectives that do not
+directly access memory, such as subgroup operations.
+• Synchronize on collisionOnly participating threads whose accesses collide on the same
+address join their viewfronts. This preserves consistency for colliding memory operations,
+while avoiding unnecessary synchronization between threads accessing disjoint addresses.
+However, it introduces a more subtle semantics, since only a subset of threads participating
+in the collective may synchronize their viewfronts.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:18 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+GLSL
+Test
+Modified
+glslang
+SPIR-V
+File
+Custom
+Compiler
+TLA+
+Operational Model
+TLA+
+Instruction Structure
+TLC
+Checker
+Test
+Outcome
+Fig. 12. End-to-end toolchain for executing GLSL test cases in the TLA+ model checker
+• No persistent synchronizationParticipating threads do not update their thread-local
+viewfronts during the collective. However, to ensure a consistent interpretation of collective
+memory effects, colliding accesses must still be evaluated using a joined viewfront for the
+accessed address. For example, this joined view can determine the valid load candidates and
+the viewfront stored with writes in 𝐻. Under this design, the collective does not permanently
+align the participating threads’ views, but it may still require temporary joining to define
+a coherent memory effect. Variants of this kind are likely to admit highly counterintuitive
+behaviors, particularly because a thread may be unable to reason about its own memory view
+from the outcome of the collective operation.
+Overall, this simple relaxed memory model extension exposes a substantial semantic design space.
+Careful future work will be needed to develop executable formal models, design distinguishing
+litmus tests, and identify design points that avoid both counterintuitive behaviors and unnecessarily
+strong synchronization constraints. Our empirical results in Sec. 7 suggest that these questions
+may be difficult to study experimentally, as we did not observe relaxed memory behaviors within a
+subgroup on any tested platform when using a robust memory model testing framework.
+5 Tool Suite and Implementation Details
+We now describe the implementation of our SIMT-Step tool suite, which includes: (1) an executable
+semantics written in TLA+, covering the four of the models described in §1.2 under the SC memory
+model; (2) a curated set of idiomatic tests designed to distinguish between these models; and (3) a
+large, fuzzed test suite used to empirically evaluate how closely real GPU devices align with the
+SIMT-Step models. All material described in this section is submitted in the supplementary material.
+5.1 Executable Semantics
+We implement the semantics from §4 in TLA+, mirroring the specified states and transitions. Our
+semantics implement over 100 SPIR-V instructions to support a GLSL frontend. We model merge
+instructions and both unconditional and conditional branches. We also implement six subgroup
+operations, including barriers, which are treated as collective operations without computation.
+To support SIMT-Step models, our implementation provides several configurations. Memory
+operations, branches, and labels can be configured as independent or collective. Additionally, any
+instruction can be marked for synchronous execution, which we use to implement theSMmodel.
+An Accessible Front End.To ease testing, we provide two translation layers that enable writing test
+shaders in GLSL. Our execution pipeline is shown in Fig. 12. First, we developed a custom compiler
+that translates SPIR-V into TLA+, including full lexing and parsing. We extend SPIR-V and glslang
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:19
+(through custom #pragma directives) to include grid-configuration directives, synchronization
+annotations, and intra-shader assertions.
+5.2 Generalizing Tests
+Throughout, we have shown example tests, i.e., see Tab. 1. We now discuss how these test cases can
+be generalized in two ways: the types of memory accesses and the number of executing threads.
+This can provide more coverage when testing actual devices. First, we categorize four test patterns,
+which serve as distinguishing and documenting tests for the four direct models of Tab. 1.
+• CM: This test corresponds to Fig. 3 and tests whether memory loads are executed collectively.
+• SM: This test corresponds to Fig. 2 without the subgroup operation and tests whether memory
+operations execute synchronously.
+• SCF: This test corresponds to Fig. 9 without the subgroup operations and tests whether
+threads have synchronous control flow.
+• SSO: This test corresponds to Fig. 9 with the subgroup operations included. It tests if subgroup
+operations synchronize with associated control flow.
+These tests follow a common pattern: they construct a racy (scheduler-dependent) program
+that, under fully independent execution, admits all interleavings, then examine which behaviors
+are allowed (or observed) to infer synchronization. The exception is the CM test, which checks
+atomicity, e.g., whether all participating threads observe the same value.
+The tests presented so far were instantiated with two stores per thread. However, race conditions
+can also occur between write-read and read-write pairs (although not read-read). Thus, the above
+test patterns can be generalized across write-write (W-W), read-write (R-W), and write-read (W-R)
+pairs. This gives us 10 possible base tests. While SIMT-Step generally doesn’t distinguish between
+memory access types (loads and stores), these different test instantiations could provide different
+coverage when executing across real systems.
+To support varying subgroup sizes and the large parallelism of GPUs, we generalize each test to
+run with an arbitrary number of threads (and an arbitrary subgroup size greater than one). Instead
+of using fixed addresses (e.g., x and y), the tests now use a buffer. To scale to arbitrary thread and
+subgroup sizes, tests use a buffer indexed by thread IDs. Each thread accesses its own slot, then the
+next slot in the subgroup (wrapping at the end), distributing race behavior across all threads.
+Fuzzing Tests.To more thoroughly evaluate whether systems relax subgroup synchronization,
+we apply compiler fuzzing techniques to our core suite of 10 tests, generating 100k variants (10K
+each). We use GraphicsFuzz [51], which applies semantics-preserving transformations to the input
+code. That is, given a test such as the one in Fig. 3, the fuzzer inserts additional instructions that
+leave the original behavior intact. While GraphicsFuzz is unaware of subgroup semantics, manual
+inspection confirms that it preserves the actual operations (memory and subgroup operations) and
+the control-flow relationships between them, which are the critical components of our test.
+6 Executable Semantics
+We run our simple idiomatic tests, configured with the smallest number of threads, through our
+TLA+ semantics. This consists of the 10 tests described in Sec. 5.2, written in GLSL and passed
+through our pipeline. We run these tests on a modest device: a mini PC running Linux kernel
+version 6.15.2-arch1-1, with 64 GB of RAM, a 14-core, 20-thread i9-13900H CPU (5.40 GHz), and
+execute TLC in parallel using all 20 threads. Our results are shown in Tab. 4. Each test behaves
+as expected under each implemented model (i.e., the direct models from Sec. 1.2). Note that the
+smallest configuration for the Collective Mem test is (2,2) as opposed to (1,2). This is larger because it
+requires two subgroups to potentially disrupt atomicity violations in collective memory operations.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:20 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+Table 4. Summary of executing tests under SIMT-Step semantics in TLA +. Each model is tested in two
+configurations: one allowing relaxed behavior (to detect a witness) and one assuming strong semantics (to
+verify correctness). The configuration is given as (𝑥, 𝑦), where 𝑥 is the number of subgroups and 𝑦 is the
+subgroup size. We report lines of code (LoC) for both GLSL and SPIR-V as pairs, which correspond to the test
+pair, along with execution metrics. The first model has no relaxed variant.
+Relaxed Witness Strong Verif.
+Test Pair Model Config GLSL LoC SPIR-V LoC States Time (s) States Time (s)
+(NA, Fig. 3)CM⟨𝑁 𝐴,(2,2) ⟩(NA, 21) (NA, 74) NA NA 5065 1
+(Fig. 3, Fig. 2)SM⟨ (2,2),(1,2) ⟩(21, 24) (74, 93) 3796 1 203 1
+(Fig. 2, Fig. 9⊘sg)SCF⟨ (1,2),(1,2) ⟩(24, 28) (93, 104) 211 1 227 1
+(Fig. 9⊘sg, Fig. 9⊕sg)SSO⟨ (1,2),(1,2) ⟩(28, 30) (104, 109) 308 1 233 1
+All tests run in under one second. This is likely because of how small the tests are, the small
+number of threads, and the heuristics to only interleave at shared state changing actions. We start
+to see the state space explosion in the CM test (with over10 × more states), as it requires four total
+threads instead of just two. Despite this, our tests still execute in under one second.
+7 Empirical Investigation
+Table 5. Devices used in our empirical study.
+Some GPUs, e.g., from Intel, have dynamic
+subgroup size which can vary across differ-
+ent kernels. The subgroup (SG) size was ob-
+tained by querying gl_SubgroupSize with
+varying_subgroup_sizeenabled [32].
+GPU Vendor SG Size
+Radeon RX 7900 AMD 64
+RTX 4070 Super NVIDIA 32
+Tegra Orin NVIDIA 32
+Iris Xe Graphics Intel 16
+Mali-G710 MP7 ARM 16
+Xclipse 940 Samsung 32
+Adreno 740 Qualcomm 64
+Adreno 730 Qualcomm 64
+Adreno X1-85 Qualcomm 64
+M1 Apple 32
+Tests are written in GLSL and executed using Am-
+ber [ 17]. GLSL provides a mature subgroup API, un-
+like WebGPU where support is still evolving [ 54].
+Our tests require VK_KHR_shader_subgroup, VK_KHR
+_shader_maximal_reconvergence, and SPIR-V 1.3+.
+We evaluate subgroup behavior across ten GPUs from
+eight vendors, covering mobile, integrated, and discrete
+hardware (Table 5; details in supplementary material). We
+exclude Imagination GPUs due to subgroup size 1 on our
+devices, though newer devices (e.g., Pixel 10) report size
+128. We include Apple M1 via the Asahi Linux Vulkan
+driver (which only supports the older M1 and M2 GPUs
+at this time) [4]. Given that GLSL (and SPIR-V) do not
+support sequentially consistent atomics, our tests use the
+strongest available operations: release for stores and ac-
+quire for loads. Under this configuration, the tests remain
+well-defined, although technically more permissive than
+intended (see Sec. 7.2). Each test uses the largest portable
+grid (65K workgroups × 128 threads) [28]. Total runtime
+is roughly 700 hours, with mobile GPUs generally slower than discrete GPUs
+As with any large empirical study, some generated tests failed to execute. A substantial fraction
+arose from invalid programs produced by GraphicsFuzz after introducing atomic operations, e.g.,
+atomics targeting thread-local memory, which are rejected by GLSL. We filtered out these invalid
+tests prior to analysis; they accounted for roughly 14% and do not correspond to valid programs. In
+addition, less than 1% of tests per device failed due to other compiler errors that we were unable to
+diagnose, often involving large shaders that could not be reduced. Finally, on the Samsung device,
+fewer than 1% of cases encountered runtime errors (e.g., out of memory) that we could not reliably
+reproduce. Only successfully executed tests were included in our results.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:21
+7.1 Empirical Observations
+Our results are presented in Fig. 13, with rows representing GPUs and columns representing test
+patterns. Tests are grouped by pattern (as described in Sec. 5.2) and memory access sequence (W
+for write,Rfor read). Each cell reports the number of interleaving outcomes: green indicates none,
+while red indicates one or more (darker denotes higher frequency). Results aggregate 10K fuzzed
+variants per base test, each executed once.
+Collective Memory Observations.Non-collective memory behavior was widely observed across
+many tested devices. The exceptions were NVIDIA and Apple, which showed no such behaviors in
+our experiments, and the Samsung device, which exhibited only non-collective memory in one test.
+These results suggest that Collective Memory (CM) is too strict. This is notable because collective
+memory behavior has been assumed by several classic GPU optimization techniques, such as leader
+election [39]. Thus, these idioms are unlikely to be reliable across diverse GPUs; luckily modern
+subgroup APIs provide safer and more portable alternatives.
+7.2 Investigating Rare Observations and Threats to Validity
+We observe that Non-synchronous behaviors appear only on Qualcomm-based devices and are
+extremely rare. We investigate whether they reflect relaxed semantics or anomalies (e.g., compiler or
+driver bugs), noting that rare outcomes may be legitimate [1] but GPU stacks also exhibit bugs [13].
+Test Case Reduction and Differential Testing.We attempted reduction using GraphicsFuzz and
+manual methods, succeeding only for one test (SM R-W) on Samsung (see supplementary material).
+The reduced case shows no obvious pattern suggesting an aggressive compiler transformation, and
+assembly inspection was unavailable. Other tests resisted reduction, as simplification eliminated
+the behavior. To further investigate, we performed differential testing on the Adreno 740 using an
+alternative driver stack (Mesa) [40]. Notably, all 14 tests that showed non-synchronous behavior
+on the native stack instead exhibited synchronous behavior under Mesa.
+Hardware Relaxed Memory.Another explanation is that some observations arise from relaxed
+GPU memory behavior [1], though prior work focuses on inter-workgroup interactions. As noted
+earlier, due to framework limitations, our tests use release/acquire (RA) atomics. Under RA, the
+W-R and W-W variants correspond to store buffering and 2+2W, respectively [ 5], where weak
+outcomes are permitted, while the R-W variants correspond to load buffering, whose weak outcome
+is disallowed under RA. We adapted GPUHarbor [ 33] to test store buffering and 2+2W within
+a subgroup, observing no relaxed outcomes on Qualcomm and Samsung devices. Thus, relaxed
+memory does not explain the non-synchronous subgroup behavior.
+Putting it Together.Despite this investigation, we cannot determine the root cause of these rare
+non-synchronous observations. They may arise from legal reorderings under relaxed memory (e.g.,
+W-W and W-R under RA), from complex hardware or software stack behaviors, or from unintended
+anomalies (e.g., framework bugs). This uncertainty affects interpretation: the model must permit
+the weakest observed behavior, suggesting SSO under RA. If the observations are anomalies, GPUs
+may instead align with a strongerSM-like model. This highlights the difficulty of inferring subgroup
+semantics empirically and the need for clearer vendor guidance.
+8 Related Work
+To our knowledge, there is little prior work that focuses on specifying the semantics of subgroup
+(or warp) behavior, particularly regarding degrees of independent execution. For example, [ 49]
+addresses producer–consumer synchronization across subgroups, but their model assumes lockstep
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:22 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+Radeon 7900
+RTX 4070
+T egra Orin
+Iris XE
+Mali-G710
+Xclipse 940
+Adreno 740
+Adreno 730
+Adreno X1-85
+M1
+8968
+8981
+7769
+7 1 2 4 2 5 1 1
+9 1 2 1 1 9048
+1 4 1 14 9 12 8 9037
+1 9199
+R-W W-R W-W R-W W-R W-W R-W W-R W-W W-R
+SSO SCF SM CM.
+Relaxation Count
+Fig. 13. Observed interleaving behaviors: Green cells show no interleaving behaviors
+execution and therefore does not capture independent thread progress within a subgroup. We
+detailed prior work on GPU verification in this area in Sec. 1 and provide a comprehensive history in
+supplementary material. Here we note a few hardware and software (e.g., compiler transformations)
+optimizations around SIMT execution that relax synchronous execution.
+Subgroups correspond to sets of GPU threads executing on SIMT hardware, often with strong syn-
+chronous behavior. This tight hardware coupling historically informed the synchronous semantics
+exploited by programmers. Since synchronization incurs cost if not supported natively, the SIMT
+implementation directly constrains feasible programming models. Several works have proposed
+new hardware SIMT execution. For example, [16] introduced dynamic warp formation, regrouping
+threads based on control flow to improve utilization under divergence. Another work, [14] tackled
+synchronization bottlenecks by proposing BOWS, a scheduler that deprioritizes spinning threads
+within warps, and DDOS, a hardware mechanism for detecting such spin loops.
+On the software side, [11] proposedspeculative reconvergence, a user-guided compiler annotation
+that delays the execution of common code regions until enough threads have arrived, improving
+SIMT efficiency. Such techniques may influence subgroup semantics, altering fairness guarantees
+or allowing subgroup composition to change during execution. As a result, specifications should
+consider the flexibility to accommodate evolving, and potentially radical, SIMT hardware designs.
+Recent work analyzes WebGPU shaders (WGSL) to statically identifyuniformprogram points
+that are executed by all threads in a subgroup. This analysis enables compiler-checkable safe
+execution of uniform subgroup operations [31].
+9 Conclusion
+This paper introduced SIMT-Step, a flexible operational semantics for modeling subgroup execu-
+tion in GPU programming. SIMT-Step utilizes a new semantic object, the dynamic block, which
+tracks convergence and divergence across subgroups. Different models can then be instantiated
+by specifying whether instructions execute collectively, synchronously, or independently. We
+instantiated several SIMT-Step models and implemented them in TLA+, validating their behavior
+with a suite of idiomatic tests. We also evaluated thousands of fuzzed GLSL tests across a wide range
+of GPUs, finding that most tested platforms exhibited behavior consistent with strong subgroup
+synchronization, while a small number of rare relaxed observations remain inconclusive. Together,
+these contributions provide a foundation and tooling support for exploring subgroup semantics.
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:23
+Acknowledgments
+This work was supported in part by the Khronos Group. We are grateful for the insightful feedback
+and discussions with its members, particularly those in the SPIR Memory Model Task Subgroup
+(TSG). We also thank the anonymous reviewers for their feedback, which greatly improved the
+clarity and rigor of this work. This material is based upon work supported by the National Science
+Foundation under Award No. 2239400. Any opinions, findings, and conclusions or recommendations
+expressed in this material are those of the author(s) and do not necessarily reflect the views of the
+funding agencies.
+Data-Availability Statement
+All tooling and experimental data for this research are available at [8, 9]. The GitHub repository
+supports ongoing development and updates, whereas the Zenodo archive provides a fixed, citable
+snapshot of the artifact used in our evaluation, ensuring reproducibility.
+References
+[1] Jade Alglave, Mark Batty, Alastair F. Donaldson, Ganesh Gopalakrishnan, Jeroen Ketema, Daniel Poetzl, Tyler Sorensen,
+and John Wickerson. 2015. GPU Concurrency: Weak Behaviours and Programming Assumptions. InProceedings of
+the Twentieth International Conference on Architectural Support for Programming Languages and Operating Systems
+(Istanbul, Turkey)(ASPLOS ’15). Association for Computing Machinery, New York, NY, USA, 577–591. doi:10.1145/
+2694344.2694391
+[2] Jade Alglave and Luc Maranget. 2015. Towards a formalisation of the HSA memory model in the cat language.
+[3] Apple Inc. 2024. Metal Developer Resources. https://developer.apple.com/metal/resources/ Accessed: 2025-07-06.
+[4] Asahi Linux Project. 2024. Asahi Linux. https://asahilinux.org/. Accessed: 2026-03-25.
+[5] Mark Batty, Scott Owens, Susmit Sarkar, Peter Sewell, and Tjark Weber. 2011. Mathematizing C++ concurrency.
+SIGPLAN Not.46, 1 (Jan. 2011), 55–66. doi:10.1145/1925844.1926394
+[6] Mark Batty and Peter Sewell. 2014. The Thin-air Problem. https://www.cl.cam.ac.uk/~pes20/cpp/notes42.html Working
+note.
+[7] Adam Betts, Nathan Chong, Alastair Donaldson, Shaz Qadeer, and Paul Thomson. 2012. GPUVerify: a verifier for
+GPU kernels. InProceedings of the ACM International Conference on Object Oriented Programming Systems Languages
+and Applications(Tucson, Arizona, USA)(OOPSLA ’12). Association for Computing Machinery, New York, NY, USA,
+113–132. doi:10.1145/2384616.2384625
+[8] Zheyuan Chen and Naomi Rehman. 2026. Artifact for “SIMT-Step Execution: A Flexible Operational Semantics For
+GPU Subgroup Behavior”. https://github.com/ArberSephirotheca/gpu-subgroup_semantics-TLAPlus. PLDI 2026.
+[9] Zheyuan Chen and Naomi Rehman. 2026. Artifact for “SIMT-Step Execution: A Flexible Operational Semantics For
+GPU Subgroup Behavior”. doi:10.5281/zenodo.19626183 PLDI 2026.
+[10] NVIDIA Corporation. 2024. CUB 1.16.0: Warp-, Block-, and Device-Wide Collective Primitives.NVIDIA Research
+(online documentation). https://nvlabs.github.io/cub/ See “Warp-Wide Collective Primitives” section.
+[11] Sana Damani, Daniel R. Johnson, Mark Stephenson, Stephen W. Keckler, Eddie Yan, Michael McKeown, and Olivier
+Giroux. 2020. Speculative reconvergence for improved SIMT efficiency. InProceedings of the 18th ACM/IEEE International
+Symposium on Code Generation and Optimization(San Diego, CA, USA)(CGO ’20). Association for Computing
+Machinery, New York, NY, USA, 121–132. doi:10.1145/3368826.3377911
+[12] Wei Ding, Diana Guttman, and Mahmut Kandemir. 2014. Compiler Support for Optimizing Memory Bank-Level
+Parallelism. InProceedings of the 47th Annual IEEE/ACM International Symposium on Microarchitecture(Cambridge,
+United Kingdom)(MICRO-47). IEEE Computer Society, USA, 571–582. doi:10.1109/MICRO.2014.34
+[13] Alastair F. Donaldson, Hugues Evrard, Andrei Lascu, and Paul Thomson. 2017. Automated testing of graphics shader
+compilers.Proc. ACM Program. Lang.1, OOPSLA, Article 93 (Oct. 2017), 29 pages. doi:10.1145/3133917
+[14] Ahmed ElTantawy and Tor M. Aamodt. 2018. Warp Scheduling for Fine-Grained Synchronization. In2018 IEEE
+International Symposium on High Performance Computer Architecture (HPCA). IEEE Computer Society, 375–388. doi:10.
+1109/HPCA.2018.00040
+[15] Naznin Fauzia, Louis-Noël Pouchet, and P. Sadayappan. 2015. Characterizing and enhancing global memory data
+coalescing on GPUs. InProceedings of the 13th Annual IEEE/ACM International Symposium on Code Generation and
+Optimization(San Francisco, California)(CGO ’15). IEEE Computer Society, USA, 12–22.
+[16] Wilson W.L. Fung, Ivan Sham, George Yuan, and Tor M. Aamodt. 2007. Dynamic Warp Formation and Scheduling for
+Efficient GPU Control Flow. In40th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO 2007).
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+219:24 Zheyuan Chen, Naomi Rehman, Guido Martínez, and Tyler Sorensen
+IEEE Computer Society, 407–420. doi:10.1109/MICRO.2007.30
+[17] Google. 2025. Amber. https://github.com/google/amber. Accessed: 2025-04-24.
+[18] The Khronos Group. 2025. SPIR-V Specification, Section “Dynamic Instance”. https://registry.khronos.org/SPIR-
+V/specs/unified1/SPIRV.html#DynamicInstance. Version 1.6, Revision 6.
+[19] Thomas Haas, Roland Meyer, Hernán Ponce de León, and Andrés Lomeli. 2026. Recurrence Sets for Proving Fair
+Non-termination under Axiomatic Memory Consistency Models.Proc. ACM Program. Lang.(2026).
+[20] Derek R. Hower, Blake A. Hechtman, Bradford M. Beckmann, Benedict R. Gaster, Mark D. Hill, Steven K. Reinhardt,
+and David A. Wood. 2014. Heterogeneous-race-free memory models. InProceedings of the 19th International Conference
+on Architectural Support for Programming Languages and Operating Systems(Salt Lake City, Utah, USA)(ASPLOS ’14).
+Association for Computing Machinery, New York, NY, USA, 427–440. doi:10.1145/2541940.2541981
+[21] Alan Jeffrey, James Riely, Mark Batty, Simon Cooksey, Ilya Kaysin, and Anton Podkopaev. 2022. The leaky semicolon:
+compositional semantic dependencies for relaxed-memory concurrency.Proc. ACM Program. Lang.6, POPL, Article 54
+(Jan. 2022), 30 pages. doi:10.1145/3498716
+[22] Amir Ashraf Kamil and Katherine A. Yelick. 2006.Concurrency Analysis for Parallel Programs with Textually Aligned
+Barriers. Technical Report UCB/EECS-2006-41. EECS Department, University of California, Berkeley. http://www2.
+eecs.berkeley.edu/Pubs/TechRpts/2006/EECS-2006-41.html
+[23] Jeehoon Kang, Chung-Kil Hur, Ori Lahav, Viktor Vafeiadis, and Derek Dreyer. 2017. A promising semantics for
+relaxed-memory concurrency. InProceedings of the 44th ACM SIGPLAN Symposium on Principles of Programming
+Languages(Paris, France)(POPL ’17). Association for Computing Machinery, New York, NY, USA, 175–189. doi:10.
+1145/3009837.3009850
+[24] Khronos Group. 2018. Comparing the Vulkan SPIR-V Memory Model to C++’s. https://www.khronos.org/blog/
+comparing-the-vulkan-spir-v-memory-model-to-cs Blog post.
+[25] Khronos Group. 2024. SPV_KHR_maximal_reconvergence Extension Specification. https://github.khronos.org/SPIRV-
+Registry/extensions/KHR/SPV_KHR_maximal_reconvergence.html Revision 2, Last Modified: 2024-04-18.
+[26] Khronos Group. 2025. OpenCL 3.0 API Specification. https://registry.khronos.org/OpenCL/specs/3.0-unified/html/
+OpenCL_API.html Version 3.0.18, Last accessed: May 12, 2025.
+[27] Khronos Group. 2025. Vulkan API Specification. https://docs.vulkan.org/spec/latest/index.html Version 1.3, Last
+accessed: May 12, 2025.
+[28] Khronos Group. 2025. Vulkan®1.3.283 - Limits. https://docs.vulkan.org/spec/latest/chapters/limits.html. Accessed:
+2025-07-10.
+[29] Jake Kirkham, Tyler Sorensen, Esin Tureci, and Margaret Martonosi. 2020. Foundations of empirical memory consistency
+testing.Proc. ACM Program. Lang.4, OOPSLA, Article 226 (Nov. 2020), 29 pages. doi:10.1145/3428294
+[30] Vasileios Klimis, Jack Clark, Alan Baker, David Neto, John Wickerson, and Alastair F. Donaldson. 2023. Taking Back
+Control in an Intermediate Representation for GPU Computing.Proc. ACM Program. Lang.7, POPL, Article 60 (Jan.
+2023), 30 pages. doi:10.1145/3571253
+[31] James Lee-Jones, John Wickerson, and Alastair F. Donaldson. 2026. Uniformity Analysis in the WebGPU Shading
+Language. InProceedings of the 47th ACM SIGPLAN Conference on Programming Language Design and Implementation.
+ACM, New York, NY, USA. doi:10.1145/3808331
+[32] Raph Levien. 2020. Prefix sum on Vulkan. https://raphlinus.github.io/gpu/2020/04/30/prefix-sum.html. Blog post.
+[33] Reese Levine, Mingun Cho, Devon McKee, Andrew Quinn, and Tyler Sorensen. 2023. GPUHarbor: Testing GPU
+Memory Consistency at Large (Experience Paper). InProceedings of the 32nd ACM SIGSOFT International Symposium
+on Software Testing and Analysis(Seattle, WA, USA)(ISSTA 2023). Association for Computing Machinery, New York,
+NY, USA, 779–791. doi:10.1145/3597926.3598095
+[34] Guodong Li, Peng Li, Geof Sawaya, Ganesh Gopalakrishnan, Indradeep Ghosh, and Sreeranga P. Rajan. 2012. GKLEE:
+concolic verification and test generation for GPUs.SIGPLAN Not.47, 8 (Feb. 2012), 215–224. doi:10.1145/2370036.2145844
+[35] Daniel Lustig, Sameer Sahasrabuddhe, and Olivier Giroux. 2019. A Formal Analysis of the NVIDIA PTX Memory Con-
+sistency Model. InProceedings of the Twenty-Fourth International Conference on Architectural Support for Programming
+Languages and Operating Systems(Providence, RI, USA)(ASPLOS ’19). Association for Computing Machinery, New
+York, NY, USA, 257–270. doi:10.1145/3297858.3304043
+[36] Guido Martínez, Bastian Köpcke, Jonáš Fiala, Gabriel Ebner, Tahina Ramanandro, Michel Steuwer, Tyler Sorensen, and
+Nikhil Swamy. 2026. Kuiper: Correct and Efficient GPU Programming with Dependent Types and Separation Logic. In
+Proceedings of the 47th ACM SIGPLAN Conference on Programming Language Design and Implementation. ACM, New
+York, NY, USA. doi:10.1145/3808280
+[37] Friedemann Mattern. 1989. Virtual Time and Global States of Distributed Systems. InParallel and Distributed Algorithms.
+North-Holland, 215–226.
+[38] Duane Merrill, Michael Garland, and Andrew Grimshaw. 2012. Scalable GPU graph traversal. InProceedings of the 17th
+ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming(New Orleans, Louisiana, USA)(PPoPP
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
+SIMT-Step Execution: A Flexible Operational Semantics for GPU Subgroup Behavior 219:25
+’12). Association for Computing Machinery, New York, NY, USA, 117–128. doi:10.1145/2145816.2145832
+[39] Duane Merrill, Michael Garland, and Andrew Grimshaw. 2015. High-Performance and Scalable GPU Graph Traversal.
+ACM Trans. Parallel Comput.1, 2, Article 14 (Feb. 2015), 30 pages. doi:10.1145/2717511
+[40] Mesa developers. 2024. Mesa 3D Graphics Library. https://www.mesa3d.org/. Accessed: 2026-03-25.
+[41] Microsoft. 2025. DirectX-Specs. https://microsoft.github.io/DirectX-Specs/. Accessed: 2025-07-06.
+[42] Kyndylan Nienhuis, Kayvan Memarian, and Peter Sewell. 2016. An operational semantics for C/C++11 concurrency.
+SIGPLAN Not.51, 10 (Oct. 2016), 111–128. doi:10.1145/3022671.2983997
+[43] NVIDIA Corporation. 2016.CUDA C Programming Guide, Version 8.0. NVIDIA Corporation. https://docs.nvidia.com/
+cuda/archive/8.0/pdf/CUDA_C_Programming_Guide.pdf Section §4.1, p. 69.
+[44] NVIDIA Corporation. 2024.CUDA C Programming Guide: SIMT Architecture. NVIDIA Corporation. https://docs.nvidia.
+com/cuda/cuda-c-programming-guide/#simt-architecture Accessed: 2025-05-12.
+[45] NVIDIA Corporation. 2025.CUDA C++ Programming Guide(release 12.9 ed.). NVIDIA Corporation, Santa Clara, CA.
+https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf Section 7.1, p. 140.
+[46] NVIDIA Corporation. 2025.CUDA Volta Tuning Guide(v12.9 ed.). NVIDIA, Santa Clara, CA. https://docs.nvidia.com/
+cuda/volta-tuning-guide/index.html Last updated May 31, 2025.
+[47] Anton Podkopaev, Ilya Sergey, and Aleksandar Nanevski. 2016. Operational Aspects of C/C++ Concurrency.
+arXiv:1606.01400 [cs.PL] https://arxiv.org/abs/1606.01400
+[48] Raimondas Sasnauskas, Yang Chen, Peter Collingbourne, Jeroen Ketema, Gratian Lup, Jubi Taneja, and John Regehr.
+2018. Souper: A Synthesizing Superoptimizer. arXiv:1711.04422 [cs.PL] https://arxiv.org/abs/1711.04422
+[49] Rahul Sharma, Michael Bauer, and Alex Aiken. 2015. Verification of producer-consumer synchronization in GPU
+programs.SIGPLAN Not.50, 6 (June 2015), 88–98. doi:10.1145/2813885.2737962
+[50] Tyler Sorensen, Lucas F. Salvador, Harmit Raval, Hugues Evrard, John Wickerson, Margaret Martonosi, and Alastair F.
+Donaldson. 2021. Specifying and testing GPU workgroup progress models.Proc. ACM Program. Lang.5, OOPSLA,
+Article 131 (Oct. 2021), 30 pages. doi:10.1145/3485508
+[51] The GraphicsFuzz Authors. 2025. GraphicsFuzz testing framework. https://github.com/google/graphicsfuzz. Accessed
+June 30, 2025.
+[52] The Khronos Group. 2018.Vulkan has just become the world’s first graphics API with a formal memory model. So what is
+a memory model and why should I care?The Khronos Group. https://www.khronos.org/blog/vulkan-has-just-become-
+the-worlds-first-graphics-api-with-a-formal-memory-model.-so-what-is-a-memory-model-and-why-should-i-
+care Accessed 6 July 2025.
+[53] Haining Tong, Natalia Gavrilenko, Hernan Ponce de Leon, and Keijo Heljanko. 2025. Towards Unified Analysis of
+GPU Consistency. InProceedings of the 29th ACM International Conference on Architectural Support for Programming
+Languages and Operating Systems, Volume 4(Hilton La Jolla Torrey Pines, La Jolla, CA, USA)(ASPLOS ’24). Association
+for Computing Machinery, New York, NY, USA, 329–344. doi:10.1145/3622781.3674174
+[54] W3C GPU for the Web Working Group. 2024. WebGPU Shading Language (WGSL) Specification — Subgroups.
+https://www.w3.org/TR/WGSL/#subgroups.
+[55] Yi Yang, Ping Xiang, Jingfei Kong, and Huiyang Zhou. 2010. A GPGPU compiler for memory optimization and
+parallelism management. InProceedings of the 31st ACM SIGPLAN Conference on Programming Language Design and
+Implementation(Toronto, Ontario, Canada)(PLDI ’10). Association for Computing Machinery, New York, NY, USA,
+86–97. doi:10.1145/1806596.1806606
+Received 2025-11-14; accepted 2026-04-03
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 219. Publication date: June 2026.
