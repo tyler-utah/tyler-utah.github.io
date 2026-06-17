@@ -2,6 +2,10 @@
 
 <!-- Most recent entries appear at the top. -->
 
+## 2026-04-16
+
+<strong>Did you know?</strong> Testing whether a GPU's memory system correctly follows its specification is so hard that real bugs are too <em>rare</em> to use as a testing metric — so <em>MC Mutants</em> introduced mutation testing for GPU memory consistency: it deliberately injects plausible bugs into test programs and scores how well the testing environment catches them. Applied to WebGPU, the technique improved testing speed by <strong>three orders of magnitude</strong> over prior work, discovered two real conformance bugs (one leading to a WebGPU specification change), and was ultimately adopted by the official WebGPU conformance test suite. <em>(from: <a href="files/markdown/mcmutants2023.md">MC Mutants: Evaluating and Improving Testing for Memory Consistency Specifications</a>)</em>
+
 ## 2026-03-19
 
 <strong>Did you know?</strong> Traditional simultaneous multithreading (SMT) designs must choose between out-of-order (OoO) threads (for instruction-level parallelism) or in-order (InO) threads (for thread-level parallelism) — but <em>SHADOW</em> is the first CPU architecture to run both kinds of threads concurrently on the same core, dynamically stealing work between them. On memory-bound sparse workloads like those found in deep learning and graph processing, SHADOW achieves up to <strong>3.16×</strong> speedup and 1.33× average improvement over a standard OoO CPU, with only 1% area and power overhead. <em>(from: <a href="files/markdown/shadow.md">SHADOW: Simultaneous Multi-Threading Architecture with Asymmetric Threads</a>)</em>
